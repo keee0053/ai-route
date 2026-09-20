@@ -3,9 +3,10 @@ package com.prizmprograms.ekz
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.prizmprograms.ekz.data.EkzApi
+import com.prizmprograms.ekz.model.Extreme
+import com.prizmprograms.ekz.model.Genre
 import com.prizmprograms.ekz.model.RouteInfo
 import com.prizmprograms.ekz.model.SearchUiState
-import com.prizmprograms.ekz.model.Tag
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,16 +17,13 @@ class SearchViewModel(private val api: EkzApi = EkzApi()) : ViewModel() {
     private val _state = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
 
-    private var route: RouteInfo? = null
-
-    /** 「消去法で探す」。ルート沿いの候補を取ってから最初の1件を出す */
-    fun start(info: RouteInfo) {
-        route = info
-        _state.value = SearchUiState(loading = true)
+    /** ジャンルを選んで開始。genre が null なら「おまかせ」 */
+    fun start(info: RouteInfo, genre: Genre?) {
+        _state.value = SearchUiState(genre = genre, loading = true)
 
         viewModelScope.launch {
             runCatching {
-                api.search(info.origin.toQuery(), info.destination.toQuery())
+                api.search(info.origin.toQuery(), info.destination.toQuery(), genre?.id)
             }.onSuccess { result ->
                 _state.value = _state.value.copy(
                     all = result.candidates,
@@ -43,42 +41,33 @@ class SearchViewModel(private val api: EkzApi = EkzApi()) : ViewModel() {
         _state.value = _state.value.copy(request = text)
     }
 
-    fun toggleTag(tag: Tag) {
+    fun toggleTag(tag: String) {
         val s = _state.value
-        _state.value = s.copy(
-            badTags = if (tag in s.badTags) s.badTags - tag else s.badTags + tag,
-            message = null,
-        )
+        _state.value = s.copy(feedback = s.feedback.toggleTag(tag), message = null)
     }
 
-    fun toggleDetour() {
+    fun toggleExpanded(e: Extreme) {
         val s = _state.value
-        val cur = s.current ?: return
-        val on = s.maxDetour == null
-        _state.value = s.copy(
-            maxDetour = if (on) cur.detourMinutes else null,
-            detourBadFor = if (on) cur.id else null,
-            message = null,
-        )
+        _state.value = s.copy(feedback = s.feedback.toggleExpanded(e))
+    }
+
+    fun toggleExtreme(e: Extreme, low: Boolean) {
+        val s = _state.value
+        _state.value = s.copy(feedback = s.feedback.toggleExtreme(e, low), message = null)
     }
 
     fun next() = advance(markSeen = true)
 
-    fun relax() {
-        _state.value = _state.value.copy(
-            badTags = emptySet(),
-            maxDetour = null,
-            detourBadFor = null,
-            message = null,
-        )
+    fun clearFeedback() {
+        val s = _state.value
+        _state.value = s.copy(feedback = com.prizmprograms.ekz.model.Feedback(), message = null)
         advance(markSeen = false)
     }
 
     /**
      * 次の1件を出す。
-     *
-     * 行き止まりを作らない: 出せるものが無くなったら黙って止まらず、
-     * 時間条件 -> タグNG -> 見た履歴 の順に1段ずつゆるめて、何をゆるめたかを伝える。
+     * 絞り込みはサーバ側(Jev)に任せ、アプリでは見終わったものだけ除く。
+     * 出しきったら黙って止めず、履歴をリセットして出し直す。
      */
     private fun advance(markSeen: Boolean) {
         viewModelScope.launch {
@@ -88,33 +77,21 @@ class SearchViewModel(private val api: EkzApi = EkzApi()) : ViewModel() {
             _state.value = s
 
             var note: String? = null
-            var pool = s.pool()
-
-            if (pool.isEmpty() && s.maxDetour != null) {
-                s = s.copy(maxDetour = null, detourBadFor = null)
-                note = "これより短い寄り道が無かったので、時間の条件は外しました"
-                pool = s.pool()
-            }
-            if (pool.isEmpty() && s.badTags.isNotEmpty()) {
-                s = s.copy(badTags = emptySet())
-                note = "条件に合うものが無くなったので、NG をいったん外しました"
-                pool = s.pool()
-            }
-            if (pool.isEmpty()) {
+            if (s.pool().isEmpty()) {
                 s = s.copy(seen = emptySet())
                 note = "ひと通り見終わったので、最初から出し直します"
-                pool = s.pool()
             }
+            val pool = s.pool()
             if (pool.isEmpty()) {
                 _state.value = s.copy(loading = false, current = null, message = "候補がありません")
                 return@launch
             }
 
             runCatching {
-                val id = api.next(pool, s.request, s.badTags)
+                val fb = s.feedback
+                val id = api.next(pool, s.request, fb.badTags, fb.goodTags, fb.extremeNotes)
                 val picked = pool.firstOrNull { it.id == id } ?: pool.first()
-                val tags = runCatching { api.tag(picked) }.getOrDefault(emptySet())
-                picked.copy(tags = tags)
+                picked.copy(tags = runCatching { api.tag(picked) }.getOrDefault(emptyList()))
             }.onSuccess { picked ->
                 _state.value = s.copy(current = picked, loading = false, message = note)
             }.onFailure { e ->

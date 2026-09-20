@@ -1,22 +1,17 @@
 package com.prizmprograms.ekz.model
 
 /**
- * 「1件ずつ見せて、嫌なところにNGを付けると次が変わる」画面の状態。
+ * 「1件ずつ見せて、嫌なところ・いい所に印を付けると次が変わる」画面の状態。
  *
- * 消すのは候補そのものではなく「属性」。
- * NG を付けたタグはサーバの /next に渡して Jev に避けさせる。
- * 時間の上限だけはアプリ側で落とせるのでローカルで絞る。
+ * 絞り込みはアプリ側でやらず、反応をそのままサーバに渡して Jev に選ばせる。
+ * 条件で機械的に弾くと行き止まりになりやすく、「気分で選ぶ」という建て付けとも合わない。
  */
 data class SearchUiState(
+    val genre: Genre? = null,
     val all: List<Candidate> = emptyList(),
     val current: Candidate? = null,
     val seen: Set<String> = emptySet(),
-
-    val badTags: Set<Tag> = emptySet(),
-    val maxDetour: Int? = null,
-    /** 時間NGを押した候補のID。その候補を見ている間だけ NG 表示にする */
-    val detourBadFor: String? = null,
-
+    val feedback: Feedback = Feedback(),
     val request: String = "",
 
     /** 目的地までの残り時間(寄り道を除く)。/search が返す実測値 */
@@ -26,24 +21,22 @@ data class SearchUiState(
     val message: String? = null,
     val error: String? = null,
 ) {
-    val started: Boolean get() = current != null || seen.isNotEmpty() || loading
+    val started: Boolean get() = current != null || seen.isNotEmpty() || loading || error != null
 
     val etaMinutes: Int get() = baseMinutes + (current?.detourMinutes ?: 0)
 
-    val hasFeedback: Boolean get() = badTags.isNotEmpty() || maxDetour != null
-
-    val detourIsBad: Boolean get() = current != null && current.id == detourBadFor
-
-    val detourNote: String? get() = maxDetour?.let { "$it 分未満で探しています" }
-
-    val avoiding: String?
+    /** 今の反応を1行で。画面に出してユーザーに見せる */
+    val summaryOfFeedback: String?
         get() {
-            val parts = badTags.map { it.label } + listOfNotNull(maxDetour?.let { "+$it 分以上" })
-            return if (parts.isEmpty()) null else "避けているもの: " + parts.joinToString(" / ")
+            val bad = feedback.badTags
+            val good = feedback.goodTags
+            val parts = buildList {
+                if (good.isNotEmpty()) add("いい感じ: " + good.joinToString(" / "))
+                if (bad.isNotEmpty()) add("避けたい: " + bad.joinToString(" / "))
+                addAll(feedback.extremeNotes)
+            }
+            return parts.ifEmpty { null }?.joinToString("  ")
         }
 
-    /** 次の候補を選ぶときに渡す母集団 */
-    fun pool(): List<Candidate> = all
-        .filterNot { it.id in seen }
-        .filter { maxDetour == null || it.detourMinutes < maxDetour }
+    fun pool(): List<Candidate> = all.filterNot { it.id in seen }
 }

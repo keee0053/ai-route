@@ -8,8 +8,26 @@ import {
 const ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes";
 const PLACES_URL = "https://places.googleapis.com/v1/places:searchText";
 
-/** 候補を集めるときに投げるクエリ。1本では7〜20件しか返らないので複数投げる */
-export const DEFAULT_QUERIES = ["カフェ", "公園", "道の駅", "観光スポット", "展望台"];
+/**
+ * ジャンルごとに投げるクエリ。
+ * 1クエリでは7〜20件しか返らないので、ジャンルあたり3〜4本投げて件数を確保する。
+ * 実測(京都->舞子): どのジャンルも合格20件以上。
+ */
+export const GENRE_QUERIES = {
+  meal: ["ランチ", "ラーメン", "定食", "食堂"],
+  sweets: ["カフェ", "スイーツ", "ベーカリー"],
+  view: ["展望台", "海岸", "公園"],
+  sightseeing: ["観光スポット", "神社", "城"],
+  rest: ["道の駅", "サービスエリア", "お土産"],
+};
+
+/** おまかせ。各ジャンルから1本ずつ */
+export const DEFAULT_QUERIES = ["ランチ", "カフェ", "展望台", "観光スポット", "道の駅"];
+
+export function queriesForGenre(genre) {
+  if (!genre) return DEFAULT_QUERIES;
+  return GENRE_QUERIES[genre] ?? DEFAULT_QUERIES;
+}
 
 const PRICE_LABEL = {
   PRICE_LEVEL_FREE: "無料",

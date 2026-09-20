@@ -1,7 +1,6 @@
 package com.prizmprograms.ekz.data
 
 import com.prizmprograms.ekz.model.Candidate
-import com.prizmprograms.ekz.model.Tag
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -24,7 +23,7 @@ data class SearchResult(
 private data class SearchRequest(
     val origin: String,
     val destination: String,
-    val queries: List<String>? = null,
+    val genre: String? = null,
 )
 
 @Serializable
@@ -32,65 +31,56 @@ private data class NextRequest(
     val candidates: List<Candidate>,
     val request: String = "",
     val badTags: List<String> = emptyList(),
+    val goodTags: List<String> = emptyList(),
+    val notes: List<String> = emptyList(),
 )
 
 @Serializable
 private data class NextResponse(val id: String? = null, val confidence: Double? = null)
 
 @Serializable
-private data class TagRequest(val candidates: List<Candidate>)
+private data class TagRequest(val candidate: Candidate)
 
 @Serializable
-private data class TagResult(val id: String, val tags: List<String> = emptyList())
-
-@Serializable
-private data class TagResponse(val results: List<TagResult> = emptyList())
+private data class TagResponse(val tags: List<String> = emptyList())
 
 /**
  * Cloudflare Workers のサーバを叩く。
- *
  * APIキーは全部サーバ側にあるので、アプリには何も持たせない。
  */
 class EkzApi(
     private val baseUrl: String = BASE_URL,
     private val client: OkHttpClient = defaultClient(),
 ) {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val mediaType = "application/json; charset=utf-8".toMediaType()
 
     /** ルート沿いの候補をまとめて取る。サーバ側で6時間キャッシュされる */
-    suspend fun search(origin: String, destination: String): SearchResult =
-        post("/search", json.encodeToString(SearchRequest(origin, destination)))
-            .let { json.decodeFromString(it) }
+    suspend fun search(origin: String, destination: String, genre: String?): SearchResult =
+        json.decodeFromString(
+            post("/search", json.encodeToString(SearchRequest(origin, destination, genre))),
+        )
 
-    /**
-     * 次に見せる1件を Jev に選ばせる。
-     * 見終わったものと時間超過はアプリ側で落としてから渡す。
-     */
+    /** 次に見せる1件を Jev に選ばせる */
     suspend fun next(
         candidates: List<Candidate>,
         request: String,
-        badTags: Set<Tag>,
+        badTags: List<String>,
+        goodTags: List<String>,
+        notes: List<String>,
     ): String? {
         if (candidates.isEmpty()) return null
         val body = json.encodeToString(
-            NextRequest(
-                candidates = candidates.take(40),
-                request = request,
-                badTags = badTags.map { it.label },
-            ),
+            NextRequest(candidates.take(40), request, badTags, goodTags, notes),
         )
         return json.decodeFromString<NextResponse>(post("/next", body)).id
     }
 
-    /** 表示する1件だけタグを取る。全件に付けると呼び出しが増えすぎる */
-    suspend fun tag(candidate: Candidate): Set<Tag> {
-        val body = json.encodeToString(TagRequest(listOf(candidate)))
-        val res = json.decodeFromString<TagResponse>(post("/tag", body))
-        return res.results.firstOrNull()?.tags.orEmpty()
-            .mapNotNull { Tag.fromLabel(it) }
-            .toSet()
-    }
+    /** その場所のタグを AI に都度作らせる。表示する1件だけ */
+    suspend fun tag(candidate: Candidate): List<String> =
+        json.decodeFromString<TagResponse>(
+            post("/tag", json.encodeToString(TagRequest(candidate))),
+        ).tags
 
     /** 写真のURL。サーバが中継するのでAPIキーは出ない */
     fun photoUrl(photoName: String, maxWidthPx: Int = 1200): String =

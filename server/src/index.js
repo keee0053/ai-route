@@ -1,5 +1,6 @@
-import { computeRoute, searchAlongRoute, proxyPhoto, DEFAULT_QUERIES } from "./google.js";
-import { tagCandidate, pickNext, TAGS } from "./jev.js";
+import { computeRoute, searchAlongRoute, proxyPhoto, queriesForGenre } from "./google.js";
+import { pickNext } from "./jev.js";
+import { generateTags } from "./gemini.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -19,7 +20,6 @@ export default {
           return json({
             name: "ekz-server",
             endpoints: ["POST /search", "POST /tag", "POST /next", "GET /photo"],
-            tags: TAGS.map((t) => t.label),
           });
 
         case "POST /search":
@@ -53,11 +53,13 @@ export default {
  */
 async function handleSearch(request, env, ctx) {
   const body = await request.json();
-  const { origin, destination, queries } = body;
+  const { origin, destination, genre } = body;
   if (!origin || !destination) return fail("origin と destination が必要です", 400);
 
+  const queries = queriesForGenre(genre);
+
   const cacheKey = new Request(
-    `https://ekz.cache/search?o=${encodeURIComponent(origin)}&d=${encodeURIComponent(destination)}&q=${encodeURIComponent((queries ?? DEFAULT_QUERIES).join("|"))}`,
+    `https://ekz.cache/search?o=${encodeURIComponent(origin)}&d=${encodeURIComponent(destination)}&g=${encodeURIComponent(genre ?? "any")}`,
   );
   const cache = caches.default;
   const hit = await cache.match(cacheKey);
@@ -67,7 +69,7 @@ async function handleSearch(request, env, ctx) {
   const found = await searchAlongRoute(
     env.GOOGLE_MAPS_SERVER_KEY,
     route.polyline,
-    queries ?? DEFAULT_QUERIES,
+    queries,
   );
   const candidates = found.candidates;
 
@@ -89,21 +91,21 @@ async function handleSearch(request, env, ctx) {
   ctx.waitUntil(cache.put(cacheKey, cached.clone()));
   return cached;
 }
-
 /**
  * POST /tag
- *   { candidate: {...} }  または  { candidates: [ {...}, ... ] }
- * Jev で15タグを判定する。
+ *   { candidate: {...} }
+ * その場所の特徴タグを Gemini に都度10個ほど作らせる。
+ * 固定リストから選ばせると、どの場所も似たタグになって選ぶ手がかりにならない。
  */
 async function handleTag(request, env) {
   const body = await request.json();
-  const list = body.candidates ?? (body.candidate ? [body.candidate] : []);
-  if (list.length === 0) return fail("candidate が必要です", 400);
-  if (list.length > 10) return fail("一度に渡せるのは10件までです", 400);
+  const candidate = body.candidate ?? body.candidates?.[0];
+  if (!candidate) return fail("candidate が必要です", 400);
 
-  const results = await Promise.all(list.map((c) => tagCandidate(env.TYPESAFE_API_KEY, c)));
-  return json({ results });
+  const tags = await generateTags(env.GEMINI_API_KEY, candidate);
+  return json({ id: candidate.id, tags });
 }
+
 
 /**
  * POST /next
@@ -117,6 +119,8 @@ async function handleNext(request, env) {
   const picked = await pickNext(env.TYPESAFE_API_KEY, body.candidates, {
     request: body.request ?? "",
     badTags: body.badTags ?? [],
+    goodTags: body.goodTags ?? [],
+    notes: body.notes ?? [],
   });
   return json(picked ?? { id: null });
 }

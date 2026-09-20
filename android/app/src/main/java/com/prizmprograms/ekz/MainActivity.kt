@@ -7,9 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -22,7 +20,6 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -30,6 +27,7 @@ import com.prizmprograms.ekz.data.NavLauncher
 import com.prizmprograms.ekz.data.RouteLinkResolver
 import com.prizmprograms.ekz.model.RouteInfo
 import com.prizmprograms.ekz.ui.PickScreen
+import com.prizmprograms.ekz.ui.StartScreen
 
 class MainActivity : ComponentActivity() {
 
@@ -92,39 +90,29 @@ private fun Search(info: RouteInfo, vm: SearchViewModel = viewModel()) {
     val context = LocalContext.current
     val state by vm.state.collectAsStateWithLifecycle()
 
-    val summary = "${info.origin.name ?: "現在地"} → ${info.destination.name ?: "目的地"}"
+    val summary = (info.origin.name ?: "現在地") + " → " + (info.destination.name ?: "目的地")
 
     if (!state.started) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Text(text = "ekz", style = MaterialTheme.typography.headlineMedium)
-            Text(text = summary, style = MaterialTheme.typography.labelMedium)
-            Text(
-                text = "${info.destination.name ?: "目的地"} までの道中で寄れる場所を探します",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            Button(
-                onClick = { vm.start(info) },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(text = "消去法で探す") }
-        }
+        StartScreen(
+            summary = summary,
+            destination = info.destination.name ?: "目的地",
+            onStart = { genre -> vm.start(info, genre) },
+        )
         return
     }
 
     PickScreen(
         state = state,
-        routeSummary = summary,
+        routeSummary = summary + (state.genre?.let { "  (" + it.label + ")" } ?: ""),
         onRequestChange = vm::onRequestChange,
         onToggleTag = vm::toggleTag,
-        onToggleDetour = vm::toggleDetour,
+        onToggleExpanded = vm::toggleExpanded,
+        onToggleExtreme = vm::toggleExtreme,
         onDecide = { c ->
             NavLauncher.launch(context, NavLauncher.buildUrl(info, listOf(c.toPlace())))
         },
         onNext = vm::next,
-        onRelax = vm::relax,
+        onClear = vm::clearFeedback,
     )
 }
 
