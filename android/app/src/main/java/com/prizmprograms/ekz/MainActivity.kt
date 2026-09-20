@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -22,8 +23,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.prizmprograms.ekz.data.NavLauncher
 import com.prizmprograms.ekz.data.RouteLinkResolver
+import com.prizmprograms.ekz.model.Place
 import com.prizmprograms.ekz.model.RouteInfo
 
 class MainActivity : ComponentActivity() {
@@ -101,6 +105,8 @@ fun HomeScreen(sharedText: String?) {
 
 @Composable
 private fun RouteView(info: RouteInfo) {
+    val context = LocalContext.current
+
     Row2(label = "出発地", value = info.origin.toString())
     Row2(label = "目的地", value = info.destination.toString())
     Row2(
@@ -110,6 +116,22 @@ private fun RouteView(info: RouteInfo) {
     )
     Row2(label = "移動手段", value = info.travelMode)
     Row2(label = "ルート番号", value = info.routeIndex?.toString() ?: "既定")
+
+    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+    // TODO: 経由地は消去型の画面で決める。今は往復確認用の仮の1件
+    val dummy = Place(raw = "須磨海浜公園", name = "須磨海浜公園", lat = null, lng = null)
+    val navUrl = NavLauncher.buildUrl(info, listOf(dummy))
+
+    Button(
+        onClick = { NavLauncher.launch(context, navUrl) },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(text = "「須磨海浜公園」を経由地にしてナビ開始 (仮)")
+    }
+
+    Text(text = "生成したナビURL", style = MaterialTheme.typography.labelMedium)
+    Text(text = navUrl, style = MaterialTheme.typography.bodySmall)
 
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
     Text(text = "展開後のURL", style = MaterialTheme.typography.labelMedium)
