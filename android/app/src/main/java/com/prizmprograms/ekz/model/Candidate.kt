@@ -35,8 +35,8 @@ data class Candidate(
     val id: String,
     val name: String,
     val category: String,
-    val lat: Double,
-    val lng: Double,
+    val lat: Double? = null,
+    val lng: Double? = null,
     val rating: Double? = null,
     val reviewCount: Int? = null,
     val detourMinutes: Int,
@@ -45,5 +45,12 @@ data class Candidate(
     val tags: Set<Tag> = emptySet(),
     val hook: String? = null,
 ) {
+    /**
+     * 経由地として Maps URLs に渡す形にする。
+     *
+     * 座標があれば座標、無ければ場所名を渡す (Google 側が解決してくれる)。
+     * TODO: Places API から place_id が取れるようになったら waypoint_place_ids を使う。
+     * 名前での解決は、同名の店が複数あると別の場所に飛ぶ可能性がある。
+     */
     fun toPlace(): Place = Place(raw = name, name = name, lat = lat, lng = lng)
 }

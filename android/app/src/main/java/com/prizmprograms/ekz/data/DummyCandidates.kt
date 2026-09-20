@@ -40,8 +40,6 @@ object DummyCandidates {
         id = "",
         name = name,
         category = category,
-        lat = 34.7,
-        lng = 135.3,
         rating = rating,
         reviewCount = 100,
         detourMinutes = detour,
