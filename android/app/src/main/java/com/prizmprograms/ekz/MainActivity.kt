@@ -7,11 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -21,14 +17,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.prizmprograms.ekz.data.DummyCandidates
 import com.prizmprograms.ekz.data.NavLauncher
 import com.prizmprograms.ekz.data.RouteLinkResolver
-import com.prizmprograms.ekz.model.Place
+import com.prizmprograms.ekz.logic.Eliminator
+import com.prizmprograms.ekz.model.EliminateUiState
 import com.prizmprograms.ekz.model.RouteInfo
+import com.prizmprograms.ekz.ui.EliminateScreen
 
 class MainActivity : ComponentActivity() {
 
@@ -41,13 +41,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    HomeScreen(sharedText)
+                    App(sharedText)
                 }
             }
         }
     }
 
-    /** アプリが起動中に共有された場合 */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         sharedText = extractShared(intent)
@@ -62,86 +61,63 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun HomeScreen(sharedText: String?) {
+private fun App(sharedText: String?) {
+    if (sharedText == null) {
+        Centered(text = "Googleマップで経路を検索して、共有からこのアプリを選んでください")
+        return
+    }
+
+    val result by produceState<Result<RouteInfo>?>(initialValue = null, sharedText) {
+        value = RouteLinkResolver().resolve(sharedText)
+    }
+
+    val current = result
+    when {
+        current == null -> Centered(text = "リンクを解析しています...", spinner = true)
+
+        current.isFailure -> Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
+            Text(text = "読み取れませんでした", style = MaterialTheme.typography.titleMedium)
+            Text(text = current.exceptionOrNull()?.message.orEmpty())
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Text(text = sharedText, style = MaterialTheme.typography.bodySmall)
+        }
+
+        else -> Eliminate(current.getOrThrow())
+    }
+}
+
+@Composable
+private fun Eliminate(info: RouteInfo) {
+    val context = LocalContext.current
+
+    // TODO: ダミー。本番は Routes API でポリラインを引き、Places で集めて LLM でタグ付けする
+    var state by remember {
+        mutableStateOf(EliminateUiState(alive = DummyCandidates.list()))
+    }
+
+    val summary = "${info.origin.name ?: "現在地"} → ${info.destination.name ?: "目的地"}" +
+        "  (候補はダミー)"
+
+    EliminateScreen(
+        state = state,
+        routeSummary = summary,
+        onEliminate = { state = Eliminator.eliminate(state, it) },
+        onUndo = { state = Eliminator.undo(state) },
+        onDecide = { c ->
+            NavLauncher.launch(context, NavLauncher.buildUrl(info, listOf(c.toPlace())))
+        },
+        onReset = { state = EliminateUiState(alive = DummyCandidates.list()) },
+    )
+}
+
+@Composable
+private fun Centered(text: String, spinner: Boolean = false) {
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
+        modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(text = "ekz", style = MaterialTheme.typography.headlineMedium)
-
-        if (sharedText == null) {
-            Text(text = "Googleマップで経路を検索して、共有からこのアプリを選んでください")
-            return@Column
-        }
-
-        val result by produceState<Result<RouteInfo>?>(initialValue = null, sharedText) {
-            value = RouteLinkResolver().resolve(sharedText)
-        }
-
-        val current = result
-        when {
-            current == null -> {
-                CircularProgressIndicator()
-                Text(text = "リンクを解析しています...")
-            }
-
-            current.isFailure -> {
-                Text(
-                    text = "読み取れませんでした",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(text = current.exceptionOrNull()?.message.orEmpty())
-                HorizontalDivider()
-                Text(text = sharedText, style = MaterialTheme.typography.bodySmall)
-            }
-
-            else -> RouteView(current.getOrThrow())
-        }
-    }
-}
-
-@Composable
-private fun RouteView(info: RouteInfo) {
-    val context = LocalContext.current
-
-    Row2(label = "出発地", value = info.origin.toString())
-    Row2(label = "目的地", value = info.destination.toString())
-    Row2(
-        label = "経由地",
-        value = if (info.waypoints.isEmpty()) "なし"
-        else info.waypoints.joinToString(" / ") { it.toString() },
-    )
-    Row2(label = "移動手段", value = info.travelMode)
-    Row2(label = "ルート番号", value = info.routeIndex?.toString() ?: "既定")
-
-    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-    // TODO: 経由地は消去型の画面で決める。今は往復確認用の仮の1件
-    val dummy = Place(raw = "須磨海浜公園", name = "須磨海浜公園", lat = null, lng = null)
-    val navUrl = NavLauncher.buildUrl(info, listOf(dummy))
-
-    Button(
-        onClick = { NavLauncher.launch(context, navUrl) },
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text(text = "「須磨海浜公園」を経由地にしてナビ開始 (仮)")
-    }
-
-    Text(text = "生成したナビURL", style = MaterialTheme.typography.labelMedium)
-    Text(text = navUrl, style = MaterialTheme.typography.bodySmall)
-
-    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-    Text(text = "展開後のURL", style = MaterialTheme.typography.labelMedium)
-    Text(text = info.expandedUrl, style = MaterialTheme.typography.bodySmall)
-}
-
-@Composable
-private fun Row2(label: String, value: String) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(text = label, style = MaterialTheme.typography.labelMedium)
-        Text(text = value, style = MaterialTheme.typography.bodyLarge)
+        if (spinner) CircularProgressIndicator()
+        Text(text = text)
     }
 }
