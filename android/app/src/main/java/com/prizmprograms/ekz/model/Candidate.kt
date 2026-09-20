@@ -4,7 +4,7 @@ package com.prizmprograms.ekz.model
  * 候補に付けるタグ。固定15個。
  *
  * 本番では起動時に1回だけ LLM を呼び、口コミ本文を読ませてこのリストから選ばせる。
- * 消去の判定は全部ローカルで行うので、以降 LLM は呼ばない。
+ * 以降の絞り込みは全部ローカルで行う。
  */
 enum class Tag(val label: String) {
     QUIET("静か"),
@@ -28,9 +28,8 @@ enum class Tag(val label: String) {
  * ルート沿いの寄り道候補。
  *
  * detourMinutes は「この寄り道で所要時間が何分増えるか」。
- * 全候補に Routes API を叩くと重いので、概算
- *   (ルート最近傍点からの直線距離 x 2) / 40km/h + 滞在15分
- * で出し、最終的に残った1件だけ正確に計算し直す。
+ * 全候補に Routes API を叩くと重いので概算で出し、
+ * 最終的に選ばれた1件だけ正確に計算し直す。
  */
 data class Candidate(
     val id: String,
@@ -41,6 +40,8 @@ data class Candidate(
     val rating: Double? = null,
     val reviewCount: Int? = null,
     val detourMinutes: Int,
+    val priceRange: String? = null,
+    val photoUrl: String? = null,
     val tags: Set<Tag> = emptySet(),
     val hook: String? = null,
 ) {
