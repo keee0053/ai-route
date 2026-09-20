@@ -1,0 +1,9 @@
+{
+  "name": "ekz-server",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true }
+  // キーは wrangler secret put で登録する。ここには書かない
+  //   npx wrangler secret put GOOGLE_MAPS_SERVER_KEY
+  //   npx wrangler secret put TYPESAFE_API_KEY
+}
