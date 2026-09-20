@@ -1,6 +1,6 @@
 import { computeRoute, searchAlongRoute, proxyPhoto, queriesForGenre } from "./google.js";
 import { pickNext } from "./jev.js";
-import { generateTags } from "./gemini.js";
+import { generateTags, fallbackTags } from "./gemini.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -26,7 +26,7 @@ export default {
           return await handleSearch(request, env, ctx);
 
         case "POST /tag":
-          return await handleTag(request, env);
+          return await handleTag(request, env, ctx);
 
         case "POST /next":
           return await handleNext(request, env);
@@ -97,13 +97,37 @@ async function handleSearch(request, env, ctx) {
  * その場所の特徴タグを Gemini に都度10個ほど作らせる。
  * 固定リストから選ばせると、どの場所も似たタグになって選ぶ手がかりにならない。
  */
-async function handleTag(request, env) {
+async function handleTag(request, env, ctx) {
   const body = await request.json();
   const candidate = body.candidate ?? body.candidates?.[0];
   if (!candidate) return fail("candidate が必要です", 400);
 
-  const tags = await generateTags(env.GEMINI_API_KEY, candidate);
-  return json({ id: candidate.id, tags });
+  // 同じ場所を二度と生成しない。Gemini の無料枠は 5リクエスト/分しかない
+  const cacheKey = new Request(`https://ekz.cache/tag/${encodeURIComponent(candidate.id)}`);
+  const cache = caches.default;
+  const hit = await cache.match(cacheKey);
+  if (hit) return hit;
+
+  let tags;
+  let source = "gemini";
+  let reason = null;
+  try {
+    tags = await generateTags(env.GEMINI_API_KEY, candidate);
+  } catch (e) {
+    // 429 や 503 で落ちても画面を空にしない
+    tags = fallbackTags(candidate);
+    source = "fallback";
+    reason = String(e?.message ?? e).slice(0, 300);
+  }
+
+  const res = json({ id: candidate.id, tags, source, reason });
+  if (source === "gemini") {
+    const cached = new Response(res.body, res);
+    cached.headers.set("Cache-Control", "public, max-age=604800");
+    ctx.waitUntil(cache.put(cacheKey, cached.clone()));
+    return cached;
+  }
+  return res;
 }
 
 

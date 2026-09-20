@@ -1,5 +1,6 @@
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
-const MODEL = "gemini-3.8-flash";
+// 3.8-flash は無料枠が 1日20回しかない。lite は枠が広く、速く(4秒)、品質も十分
+const MODEL = "gemini-3.1-flash-lite";
 
 /**
  * その場所の特徴を表すタグを、口コミから都度作る。
@@ -41,6 +42,8 @@ export async function generateTags(apiKey, candidate, count = 10) {
     body: JSON.stringify({
       model: MODEL,
       input: instruction,
+      // タグ付けは難しい仕事ではない。思考を減らして待ち時間を削る
+      generation_config: { thinking_level: "low" },
       response_format: {
         type: "text",
         mime_type: "application/json",
@@ -51,27 +54,84 @@ export async function generateTags(apiKey, candidate, count = 10) {
         },
       },
     }),
+    // 無料枠は詰まりやすい。待たされるくらいならフォールバックに落とす
+    signal: AbortSignal.timeout(15000),
   });
 
   if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 200)}`);
 
   const body = await res.json();
-  const text = extractText(body);
-  if (!text) throw new Error("Gemini が空を返しました");
+  const tags = findTags(body);
+  if (!tags) throw new Error("Gemini の返答からタグを取り出せませんでした");
 
-  const tags = JSON.parse(text).tags ?? [];
   // 念のため重複と長すぎるものを落とす
   return [...new Set(tags.map((t) => String(t).trim()))]
     .filter((t) => t.length > 0 && t.length <= 12)
     .slice(0, count);
 }
 
-/** レスポンスの形がバージョンで揺れるので、いくつかの置き場所を見る */
-function extractText(body) {
-  return (
-    body.output_text ??
-    body.output?.[0]?.content?.[0]?.text ??
-    body.candidates?.[0]?.content?.parts?.[0]?.text ??
-    null
-  );
+/**
+ * レスポンスの形が公開ドキュメントと食い違っていて、しかもバージョンで揺れる。
+ * パスを決め打ちせず、JSON として tags を含む文字列を再帰的に探す。
+ */
+function findTags(node) {
+  if (typeof node === "string") {
+    if (!node.includes("tags")) return null;
+    try {
+      const parsed = JSON.parse(node);
+      return Array.isArray(parsed?.tags) ? parsed.tags : null;
+    } catch {
+      return null;
+    }
+  }
+  if (Array.isArray(node)) {
+    for (const v of node) {
+      const found = findTags(v);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (node && typeof node === "object") {
+    if (Array.isArray(node.tags) && node.tags.every((t) => typeof t === "string")) {
+      return node.tags;
+    }
+    for (const k of Object.keys(node)) {
+      if (k === "usage" || k === "signature") continue;
+      const found = findTags(node[k]);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * Gemini が使えないときの保険。
+ *
+ * 無料枠は 5リクエスト/分で、混雑時には 503 も返る。
+ * デモの最中にタグが空になるほうが問題なので、
+ * 取れた情報だけから素朴なタグを作って必ず何かを返す。
+ */
+export function fallbackTags(candidate) {
+  const tags = [];
+  const cat = candidate.category ?? "";
+  const text = (candidate.reviews ?? []).join(" ");
+
+  if (cat) tags.push(cat);
+  if (candidate.priceRange) tags.push(candidate.priceRange);
+  if ((candidate.rating ?? 0) >= 4.3) tags.push("評価が高い");
+  if ((candidate.reviewCount ?? 0) >= 1000) tags.push("有名");
+  if (candidate.detourMinutes <= 20) tags.push("寄りやすい");
+
+  const hints = [
+    ["景色", "景色がいい"], ["眺め", "眺めがいい"], ["夜景", "夜景"],
+    ["静か", "静か"], ["混", "混む"], ["並", "並ぶ"],
+    ["駐車", "駐車場あり"], ["広い", "広い"], ["狭い", "狭い"],
+    ["階段", "階段がある"], ["子ども", "子連れ向き"], ["子供", "子連れ向き"],
+    ["安い", "安い"], ["美味", "おいしい"], ["おいし", "おいしい"],
+  ];
+  for (const [needle, tag] of hints) {
+    if (text.includes(needle) && !tags.includes(tag)) tags.push(tag);
+  }
+
+  return tags.slice(0, 10);
 }
