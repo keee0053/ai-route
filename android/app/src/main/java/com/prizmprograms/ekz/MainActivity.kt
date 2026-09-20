@@ -19,18 +19,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.prizmprograms.ekz.data.DummyCandidates
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.prizmprograms.ekz.data.NavLauncher
 import com.prizmprograms.ekz.data.RouteLinkResolver
-import com.prizmprograms.ekz.logic.Picker
 import com.prizmprograms.ekz.model.RouteInfo
-import com.prizmprograms.ekz.model.SearchUiState
 import com.prizmprograms.ekz.ui.PickScreen
 
 class MainActivity : ComponentActivity() {
@@ -66,7 +64,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun App(sharedText: String?) {
     if (sharedText == null) {
-        Info(title = "ekz", body = "Googleマップで経路を検索して、共有からこのアプリを選んでください")
+        Info("Googleマップで経路を検索して、共有からこのアプリを選んでください")
         return
     }
 
@@ -76,7 +74,7 @@ private fun App(sharedText: String?) {
 
     val current = result
     when {
-        current == null -> Info(title = "ekz", body = "リンクを解析しています...", spinner = true)
+        current == null -> Info("リンクを解析しています...", spinner = true)
 
         current.isFailure -> Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
             Text(text = "読み取れませんでした", style = MaterialTheme.typography.titleMedium)
@@ -90,64 +88,53 @@ private fun App(sharedText: String?) {
 }
 
 @Composable
-private fun Search(info: RouteInfo) {
+private fun Search(info: RouteInfo, vm: SearchViewModel = viewModel()) {
     val context = LocalContext.current
+    val state by vm.state.collectAsStateWithLifecycle()
 
-    // TODO: ダミー。本番は Routes API でポリラインを引き、Places で集めて LLM でタグ付けする
-    var state by remember { mutableStateOf(SearchUiState(all = DummyCandidates.list())) }
-
-    val summary = "${info.origin.name ?: "現在地"} → ${info.destination.name ?: "目的地"}" +
-        "  (候補はダミー)"
+    val summary = "${info.origin.name ?: "現在地"} → ${info.destination.name ?: "目的地"}"
 
     if (!state.started) {
-        StartScreen(
-            summary = summary,
-            destination = info.destination.name ?: "目的地",
-            onStart = { state = Picker.start(state) },
-        )
+        Column(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(text = "ekz", style = MaterialTheme.typography.headlineMedium)
+            Text(text = summary, style = MaterialTheme.typography.labelMedium)
+            Text(
+                text = "${info.destination.name ?: "目的地"} までの道中で寄れる場所を探します",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Button(
+                onClick = { vm.start(info) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(text = "消去法で探す") }
+        }
         return
     }
 
     PickScreen(
         state = state,
         routeSummary = summary,
-        onRequestChange = { state = state.copy(request = it) },
-        onToggleTag = { state = Picker.toggleTag(state, it) },
-        onToggleDetour = { state = Picker.toggleDetour(state) },
+        onRequestChange = vm::onRequestChange,
+        onToggleTag = vm::toggleTag,
+        onToggleDetour = vm::toggleDetour,
         onDecide = { c ->
             NavLauncher.launch(context, NavLauncher.buildUrl(info, listOf(c.toPlace())))
         },
-        onNext = { state = Picker.next(state) },
-        onRelax = { state = Picker.relax(state) },
+        onNext = vm::next,
+        onRelax = vm::relax,
     )
 }
 
 @Composable
-private fun StartScreen(summary: String, destination: String, onStart: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Text(text = "ekz", style = MaterialTheme.typography.headlineMedium)
-        Text(text = summary, style = MaterialTheme.typography.labelMedium)
-        Text(
-            text = "$destination までの道中で寄れる場所を探します",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) {
-            Text(text = "消去法で探す")
-        }
-    }
-}
-
-@Composable
-private fun Info(title: String, body: String, spinner: Boolean = false) {
+private fun Info(body: String, spinner: Boolean = false) {
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(text = title, style = MaterialTheme.typography.headlineMedium)
+        Text(text = "ekz", style = MaterialTheme.typography.headlineMedium)
         if (spinner) CircularProgressIndicator()
         Text(text = body)
     }

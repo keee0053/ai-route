@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -24,9 +25,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import com.prizmprograms.ekz.data.EkzApi
 import com.prizmprograms.ekz.model.Candidate
 import com.prizmprograms.ekz.model.SearchUiState
 import com.prizmprograms.ekz.model.Tag
@@ -70,12 +74,27 @@ fun PickScreen(
             singleLine = true,
         )
 
-        val c = state.current
-        if (c == null) {
+        if (state.loading) {
+            CircularProgressIndicator()
+            Text(text = "探しています...")
+        }
+
+        if (state.error != null) {
             Text(
-                text = state.message ?: "候補がありません",
+                text = "サーバに繋がりませんでした",
                 style = MaterialTheme.typography.titleMedium,
             )
+            Text(text = state.error, style = MaterialTheme.typography.bodySmall)
+        }
+
+        val c = state.current
+        if (c == null) {
+            if (!state.loading && state.error == null) {
+                Text(
+                    text = state.message ?: "候補がありません",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
             if (state.hasFeedback) {
                 Button(onClick = onRelax, modifier = Modifier.fillMaxWidth()) {
                     Text(text = "条件をゆるめてもう一度探す")
@@ -146,7 +165,8 @@ fun PickScreen(
 
 @Composable
 private fun Photo(c: Candidate) {
-    // TODO: Places の写真が取れるようになったら photoUrl を表示する
+    val url = c.photoName?.let { EkzApi().photoUrl(it) }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -155,12 +175,21 @@ private fun Photo(c: Candidate) {
             .background(MaterialTheme.colorScheme.secondaryContainer),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = c.category,
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
-            textAlign = TextAlign.Center,
-        )
+        if (url != null) {
+            AsyncImage(
+                model = url,
+                contentDescription = c.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Text(
+                text = c.category,
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 
