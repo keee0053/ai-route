@@ -2,6 +2,9 @@ import { computeRoute, searchAlongRoute, proxyPhoto, queriesForGenre } from "./g
 import { pickNext } from "./jev.js";
 import { generateTags, fallbackTags } from "./gemini.js";
 
+// 返す形を変えたら上げる。上げないと古いキャッシュが返り続ける
+const CACHE_VERSION = "v3";
+
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
     status,
@@ -59,7 +62,7 @@ async function handleSearch(request, env, ctx) {
   const queries = queriesForGenre(genre);
 
   const cacheKey = new Request(
-    `https://ekz.cache/search?o=${encodeURIComponent(origin)}&d=${encodeURIComponent(destination)}&g=${encodeURIComponent(genre ?? "any")}`,
+    `https://ekz.cache/search/${CACHE_VERSION}?o=${encodeURIComponent(origin)}&d=${encodeURIComponent(destination)}&g=${encodeURIComponent(genre ?? "any")}`,
   );
   const cache = caches.default;
   const hit = await cache.match(cacheKey);
@@ -70,6 +73,7 @@ async function handleSearch(request, env, ctx) {
     env.GOOGLE_MAPS_SERVER_KEY,
     route.polyline,
     queries,
+    route.baseMinutes,
   );
   const candidates = found.candidates;
 
@@ -78,6 +82,8 @@ async function handleSearch(request, env, ctx) {
   const res = json({
     baseMinutes: route.baseMinutes,
     distanceKm: route.distanceKm,
+    // アプリ側で現在地の進捗を出すために返す。これで走行中もサーバを呼ばずに更新できる
+    polyline: route.polyline,
     count: candidates.length,
     rawCount: found.rawCount,
     errors: found.errors,
@@ -103,7 +109,7 @@ async function handleTag(request, env, ctx) {
   if (!candidate) return fail("candidate が必要です", 400);
 
   // 同じ場所を二度と生成しない。Gemini の無料枠は 5リクエスト/分しかない
-  const cacheKey = new Request(`https://ekz.cache/tag/${encodeURIComponent(candidate.id)}`);
+  const cacheKey = new Request(`https://ekz.cache/tag/${CACHE_VERSION}/${encodeURIComponent(candidate.id)}`);
   const cache = caches.default;
   const hit = await cache.match(cacheKey);
   if (hit) return hit;

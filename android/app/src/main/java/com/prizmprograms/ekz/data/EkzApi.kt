@@ -16,6 +16,7 @@ data class SearchResult(
     val baseMinutes: Int = 0,
     val distanceKm: Double = 0.0,
     val count: Int = 0,
+    val polyline: String = "",
     val candidates: List<Candidate> = emptyList(),
 )
 

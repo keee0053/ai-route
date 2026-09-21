@@ -23,6 +23,12 @@ data class SearchUiState(
     /** 目的地までの残り時間(寄り道を除く)。/search が返す実測値 */
     val baseMinutes: Int = 0,
 
+    /** 現在地がルート全体のどこにいるか(0〜1)。取れなければ null = 出発地基準 */
+    val myRatio: Double? = null,
+
+    /** 現在地がこのルート上にあるか。デモで「移動中」と言えるかの判定 */
+    val onRoute: Boolean = false,
+
     val loading: Boolean = false,
     /** 探している最中に出す進捗の文言 */
     val loadingStep: String? = null,
@@ -30,6 +36,17 @@ data class SearchUiState(
     val error: String? = null,
 ) {
     val started: Boolean get() = current != null || seen.isNotEmpty() || loading || error != null
+
+    /**
+     * その候補に着くまでの時間。現在地が取れていればそこからの残り、
+     * 取れていなければ出発地からの時間(サーバの値)。
+     */
+    fun minutesTo(c: Candidate): Int {
+        val mine = myRatio ?: return c.minutesToArrive
+        val remain = ((c.routeRatio - mine) * baseMinutes).toInt()
+        val detour = ((c.offRouteKm / 40.0) * 60).toInt()
+        return remain + detour
+    }
 
     /** 寄り道した場合の合計所要時間 */
     val totalMinutes: Int get() = baseMinutes + (current?.detourMinutes ?: 0)

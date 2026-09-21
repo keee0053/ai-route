@@ -81,7 +81,26 @@ fun PickScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(text = routeSummary, style = MaterialTheme.typography.labelMedium)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(text = routeSummary, style = MaterialTheme.typography.labelMedium)
+            if (state.onRoute) {
+                // 現在地がルート上にあるときだけ。時間が現在地基準になっている合図
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = GoodBg,
+                ) {
+                    Text(
+                        text = "移動中",
+                        color = GoodFg,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                    )
+                }
+            }
+        }
 
         OutlinedTextField(
             value = state.request,
@@ -170,7 +189,7 @@ fun PickScreen(
         Fact(
             label = "そこに着くまで",
             // ルートのすぐ近くだと 0分 になって変に見えるので言葉にする
-            value = if (c.minutesToArrive < 1) "すぐそこ" else "約" + formatMinutes(c.minutesToArrive),
+            value = state.minutesTo(c).let { m -> if (m < 1) "すぐそこ" else "約" + formatMinutes(m) },
             extreme = Extreme.ARRIVE,
             state = state,
             onToggle = onToggleExtreme,

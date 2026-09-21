@@ -1,5 +1,11 @@
 package com.prizmprograms.ekz
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.remember
+import com.prizmprograms.ekz.data.LocationSource
+import com.prizmprograms.ekz.model.Genre
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -92,11 +98,26 @@ private fun Search(info: RouteInfo, vm: SearchViewModel = viewModel()) {
 
     val summary = (info.origin.name ?: "現在地") + " → " + (info.destination.name ?: "目的地")
 
+    // 位置情報は「あれば使う」。断られても出発地基準で動く
+    var pendingGenre by remember { mutableStateOf<Genre?>(null) }
+    val askLocation = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) {
+        vm.start(info, pendingGenre, context)
+    }
+
     if (!state.started) {
         StartScreen(
             summary = summary,
             destination = info.destination.name ?: "目的地",
-            onStart = { genre -> vm.start(info, genre) },
+            onStart = { genre ->
+                pendingGenre = genre
+                if (LocationSource.hasPermission(context)) {
+                    vm.start(info, genre, context)
+                } else {
+                    askLocation.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                }
+            },
         )
         return
     }

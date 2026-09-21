@@ -1,13 +1,18 @@
 package com.prizmprograms.ekz
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.prizmprograms.ekz.data.EkzApi
+import com.prizmprograms.ekz.data.LocationSource
 import com.prizmprograms.ekz.model.Extreme
 import com.prizmprograms.ekz.model.Side
 import com.prizmprograms.ekz.model.Genre
 import com.prizmprograms.ekz.model.RouteInfo
 import com.prizmprograms.ekz.model.SearchUiState
+import com.prizmprograms.ekz.util.ON_ROUTE_KM
+import com.prizmprograms.ekz.util.decodePolyline
+import com.prizmprograms.ekz.util.nearestOnRoute
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,19 +23,40 @@ class SearchViewModel(private val api: EkzApi = EkzApi()) : ViewModel() {
     private val _state = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
 
-    /** ジャンルを選んで開始。genre が null なら「おまかせ」 */
-    fun start(info: RouteInfo, genre: Genre?) {
-        _state.value = SearchUiState(genre = genre, loading = true, loadingStep = "ルートを調べています")
+    /**
+     * ジャンルを選んで開始。genre が null なら「おまかせ」。
+     * current は現在地。取れていればルート上の位置を割り出して、
+     * 「そこに着くまで」を現在地からの残り時間にする。
+     */
+    fun start(info: RouteInfo, genre: Genre?, context: Context? = null) {
+        _state.value = SearchUiState(genre = genre, loading = true, loadingStep = "現在地を確認しています")
 
         viewModelScope.launch {
+            // 位置情報は「あれば使う」。断られても取れなくても出発地基準で動く
+            val current = context?.let { ctx ->
+                LocationSource.current(ctx)?.let { it.latitude to it.longitude }
+            }
+            _state.value = _state.value.copy(loadingStep = "ルートを調べています")
+
             runCatching {
                 val r = api.search(info.origin.toQuery(), info.destination.toQuery(), genre?.id)
                 _state.value = _state.value.copy(loadingStep = "候補を集めています")
                 r
             }.onSuccess { result ->
+                // 現在地がルートのどこかを出す。サーバを呼ばずに走行中も更新できる
+                var ratio: Double? = null
+                var onRoute = false
+                if (current != null && result.polyline.isNotEmpty()) {
+                    val near = nearestOnRoute(decodePolyline(result.polyline), current.first, current.second)
+                    onRoute = near.km <= ON_ROUTE_KM
+                    if (onRoute) ratio = near.ratio
+                }
+
                 _state.value = _state.value.copy(
                     all = result.candidates,
                     baseMinutes = result.baseMinutes,
+                    myRatio = ratio,
+                    onRoute = onRoute,
                     loading = false,
                 )
                 advance(markSeen = false)

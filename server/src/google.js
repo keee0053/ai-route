@@ -169,6 +169,9 @@ function toCandidate(p, routePoints, baseMinutes) {
     reviews: (p.reviews ?? []).map((r) => r.text?.text).filter(Boolean).slice(0, 3),
     detourMinutes: estimateDetourMinutes(off, stayMinutesFor(p.primaryTypeDisplayName?.text ?? "")),
     minutesToArrive,
+    // ルート全体のどこにある候補か(0〜1)。現在地からの時間をアプリ側で出すのに使う
+    routeRatio: +near.ratio.toFixed(4),
+    offRouteKm: +off.toFixed(2),
   };
 }
 

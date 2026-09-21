@@ -23,6 +23,9 @@ data class Candidate(
     val reviews: List<String> = emptyList(),
     val detourMinutes: Int = 0,
     val minutesToArrive: Int = 0,
+    /** ルート全体のどこにある候補か(0〜1) */
+    val routeRatio: Double = 0.0,
+    val offRouteKm: Double = 0.0,
     @Transient val tags: List<String> = emptyList(),
 ) {
     /**
