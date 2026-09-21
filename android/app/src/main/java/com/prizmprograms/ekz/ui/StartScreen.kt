@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
@@ -31,7 +32,10 @@ fun StartScreen(
     onStart: (Genre?) -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(text = "ekz", style = MaterialTheme.typography.headlineMedium)
@@ -43,25 +47,29 @@ fun StartScreen(
             modifier = Modifier.padding(bottom = 8.dp),
         )
 
-        // 2列に並べる。奇数個なので、あまった最後の1つは横幅いっぱいにする。
-        // 片側だけ空けると左に寄って見えるため。
-        Genre.entries.chunked(2).forEach { row ->
+        // 5つのジャンル + おまかせ を 2列 x 3行 に並べる。
+        // 片側だけ空けると左に寄って見えるので、ちょうど6つで埋める。
+        val items: List<Genre?> = Genre.entries.map { it } + listOf(null)
+
+        items.chunked(2).forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 row.forEach { g ->
-                    FilledTonalButton(
-                        onClick = { onStart(g) },
-                        modifier = Modifier.weight(1f).height(56.dp),
-                    ) { Text(text = g.label) }
+                    val mod = Modifier.weight(1f).height(56.dp)
+                    if (g != null) {
+                        FilledTonalButton(onClick = { onStart(g) }, modifier = mod) {
+                            Text(text = g.label)
+                        }
+                    } else {
+                        // おまかせだけ目立たせる。何も選ばずに始められるのがこのアプリの建て付け
+                        Button(onClick = { onStart(null) }, modifier = mod) {
+                            Text(text = "おまかせ")
+                        }
+                    }
                 }
             }
         }
-
-        Button(
-            onClick = { onStart(null) },
-            modifier = Modifier.fillMaxWidth().height(56.dp).padding(top = 8.dp),
-        ) { Text(text = "おまかせで探す") }
     }
 }

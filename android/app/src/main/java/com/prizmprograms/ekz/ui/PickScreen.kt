@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -66,6 +67,8 @@ fun PickScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            // ステータスバーに文字が潜り込むので余白を入れる
+            .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -118,8 +121,8 @@ fun PickScreen(
 
         Fact(
             label = "追加でかかる時間",
-            value = "+" + c.detourMinutes + "分",
-            note = "寄ると合計 " + state.totalMinutes + "分",
+            value = "+" + formatMinutes(c.detourMinutes),
+            note = "寄ると合計 " + formatMinutes(state.totalMinutes),
             extreme = Extreme.DETOUR,
             state = state,
             onToggle = onToggleExtreme,
@@ -127,7 +130,8 @@ fun PickScreen(
         )
         Fact(
             label = "そこに着くまで",
-            value = "約" + c.minutesToArrive + "分",
+            // ルートのすぐ近くだと 0分 になって変に見えるので言葉にする
+            value = if (c.minutesToArrive < 1) "すぐそこ" else "約" + formatMinutes(c.minutesToArrive),
             extreme = Extreme.ARRIVE,
             state = state,
             onToggle = onToggleExtreme,
