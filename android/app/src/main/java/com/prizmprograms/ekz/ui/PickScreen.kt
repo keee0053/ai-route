@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -166,16 +168,23 @@ fun PickScreen(
     }
 }
 
+/**
+ * タグの並び。
+ *
+ * 3個ずつの固定にすると、短いタグが3つ並んだ行で右が大きく余り、
+ * 全体が左に寄って見える。FlowRow で幅いっぱいまで詰めて折り返す。
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Tags(tags: List<String>, state: SearchUiState, onToggle: (String) -> Unit) {
     if (tags.isEmpty()) return
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        tags.chunked(3).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { t ->
-                    Chip(text = t, vote = state.feedback.voteOf(t)) { onToggle(t) }
-                }
-            }
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        tags.forEach { t ->
+            Chip(text = t, vote = state.feedback.voteOf(t)) { onToggle(t) }
         }
     }
 }

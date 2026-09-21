@@ -43,6 +43,8 @@ fun StartScreen(
             modifier = Modifier.padding(bottom = 8.dp),
         )
 
+        // 2列に並べる。奇数個なので、あまった最後の1つは横幅いっぱいにする。
+        // 片側だけ空けると左に寄って見えるため。
         Genre.entries.chunked(2).forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -53,9 +55,6 @@ fun StartScreen(
                         onClick = { onStart(g) },
                         modifier = Modifier.weight(1f).height(56.dp),
                     ) { Text(text = g.label) }
-                }
-                if (row.size == 1) {
-                    Column(modifier = Modifier.weight(1f)) {}
                 }
             }
         }
