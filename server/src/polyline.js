@@ -45,16 +45,24 @@ function distanceKm(aLat, aLng, bLat, bLng) {
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
-/** ルート上で一番近い点までの距離(km) */
-export function distanceToRouteKm(points, lat, lng) {
+/**
+ * ルート上で一番近い点を探す。
+ * km  … そこまでの直線距離(寄り道コストの概算に使う)
+ * ratio … ルート全体のどこまで進んだ位置か(0〜1)。経由地までの時間の算出に使う
+ */
+export function nearestOnRoute(points, lat, lng) {
   let min = Infinity;
+  let at = 0;
   // 全点を見ると重いので間引く。ポリラインは十分密なので精度は足りる
   const step = Math.max(1, Math.floor(points.length / 400));
   for (let i = 0; i < points.length; i += step) {
     const d = distanceKm(points[i][0], points[i][1], lat, lng);
-    if (d < min) min = d;
+    if (d < min) {
+      min = d;
+      at = i;
+    }
   }
-  return min;
+  return { km: min, ratio: points.length > 1 ? at / (points.length - 1) : 0 };
 }
 
 /**

@@ -22,6 +22,7 @@ data class Candidate(
     val photoName: String? = null,
     val reviews: List<String> = emptyList(),
     val detourMinutes: Int = 0,
+    val minutesToArrive: Int = 0,
     @Transient val tags: List<String> = emptyList(),
 ) {
     /**

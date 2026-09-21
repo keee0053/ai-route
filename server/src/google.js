@@ -1,6 +1,6 @@
 import {
   decodePolyline,
-  distanceToRouteKm,
+  nearestOnRoute,
   estimateDetourMinutes,
   stayMinutesFor,
 } from "./polyline.js";
@@ -91,7 +91,7 @@ function isWorthStopping(c) {
   return c.reviewCount >= 30 && c.rating >= 3.8;
 }
 
-export async function searchAlongRoute(key, polyline, queries = DEFAULT_QUERIES) {
+export async function searchAlongRoute(key, polyline, queries = DEFAULT_QUERIES, baseMinutes = 0) {
   const fieldMask = [
     "places.id",
     "places.displayName",
@@ -129,7 +129,7 @@ export async function searchAlongRoute(key, polyline, queries = DEFAULT_QUERIES)
   for (const body of responses) {
     for (const p of body.places ?? []) {
       if (byId.has(p.id)) continue;
-      byId.set(p.id, toCandidate(p, points));
+      byId.set(p.id, toCandidate(p, points, baseMinutes));
     }
   }
 
@@ -147,10 +147,14 @@ export async function searchAlongRoute(key, polyline, queries = DEFAULT_QUERIES)
   };
 }
 
-function toCandidate(p, routePoints) {
+function toCandidate(p, routePoints, baseMinutes) {
   const lat = p.location?.latitude;
   const lng = p.location?.longitude;
-  const off = lat != null ? distanceToRouteKm(routePoints, lat, lng) : 0;
+  const near = lat != null ? nearestOnRoute(routePoints, lat, lng) : { km: 0, ratio: 0 };
+  const off = near.km;
+
+  // その経由地に着くまでの時間。ルート上の到達位置 + ルートから外れる分
+  const minutesToArrive = Math.round(baseMinutes * near.ratio + (off / 40) * 60);
 
   return {
     id: p.id,
@@ -164,6 +168,7 @@ function toCandidate(p, routePoints) {
     photoName: p.photos?.[0]?.name ?? null,
     reviews: (p.reviews ?? []).map((r) => r.text?.text).filter(Boolean).slice(0, 3),
     detourMinutes: estimateDetourMinutes(off, stayMinutesFor(p.primaryTypeDisplayName?.text ?? "")),
+    minutesToArrive,
   };
 }
 

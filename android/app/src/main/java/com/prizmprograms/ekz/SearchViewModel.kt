@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.prizmprograms.ekz.data.EkzApi
 import com.prizmprograms.ekz.model.Extreme
+import com.prizmprograms.ekz.model.Side
 import com.prizmprograms.ekz.model.Genre
 import com.prizmprograms.ekz.model.RouteInfo
 import com.prizmprograms.ekz.model.SearchUiState
@@ -46,14 +47,16 @@ class SearchViewModel(private val api: EkzApi = EkzApi()) : ViewModel() {
         _state.value = s.copy(feedback = s.feedback.toggleTag(tag), message = null)
     }
 
-    fun toggleExpanded(e: Extreme) {
+    /** 項目そのもの: 中立 -> 赤 -> 緑 -> 中立 */
+    fun toggleExtreme(e: Extreme) {
         val s = _state.value
-        _state.value = s.copy(feedback = s.feedback.toggleExpanded(e))
+        _state.value = s.copy(feedback = s.feedback.toggleExtreme(e), message = null)
     }
 
-    fun toggleExtreme(e: Extreme, low: Boolean) {
+    /** 赤のときだけ出る「短すぎる/長すぎる」。排他 */
+    fun chooseSide(e: Extreme, side: Side) {
         val s = _state.value
-        _state.value = s.copy(feedback = s.feedback.toggleExtreme(e, low), message = null)
+        _state.value = s.copy(feedback = s.feedback.chooseSide(e, side), message = null)
     }
 
     fun next() = advance(markSeen = true)

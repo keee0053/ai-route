@@ -1,9 +1,7 @@
 package com.prizmprograms.ekz.model
 
 /**
- * タグやボタンの3状態。
- *
- * タップするたびに 中立 → 嫌(赤) → いい感じ(緑) → 中立 と回る。
+ * タグや項目の3状態。タップするたびに 中立 → 嫌(赤) → いい感じ(緑) → 中立 と回る。
  */
 enum class Vote {
     NEUTRAL,
@@ -17,66 +15,60 @@ enum class Vote {
     }
 }
 
-/**
- * 数値の項目に対する不満。
- * 「追加でかかる時間」などを押すと、この2択が出る。
- */
-enum class Extreme(val shortLabel: String, val longLabel: String) {
-    DETOUR("短すぎる", "長すぎる"),
-    ETA("早く着きすぎる", "遅すぎる"),
-    PRICE("安すぎる", "高すぎる"),
+/** 赤(嫌)のときだけ選べる、どちら向きが嫌かの指定 */
+enum class Side { LOW, HIGH }
+
+/** 数値で表される項目 */
+enum class Extreme(val lowLabel: String, val highLabel: String, val noun: String) {
+    DETOUR("短すぎる", "長すぎる", "寄り道の時間"),
+    ARRIVE("近すぎる", "遠すぎる", "そこに着くまでの時間"),
+    PRICE("安すぎる", "高すぎる", "価格"),
 }
 
+/** 項目ごとの状態。嫌(赤)のときだけ side を選べる */
+data class ExtremeState(val vote: Vote = Vote.NEUTRAL, val side: Side? = null)
+
 /**
- * 寄り道に対するユーザーの反応をまとめたもの。
- * これを /next に渡して、次の候補を選ばせる。
+ * 寄り道に対するユーザーの反応。これを言葉にしてサーバに渡し、次の候補を選ばせる。
  */
 data class Feedback(
-    /** タグの文字列 -> 3状態 */
     val tags: Map<String, Vote> = emptyMap(),
-    /** 数値項目 -> (短い側の票, 長い側の票) */
-    val extremes: Map<Extreme, Pair<Vote, Vote>> = emptyMap(),
-    /** 展開して選択肢を出している項目 */
-    val expanded: Set<Extreme> = emptySet(),
+    val extremes: Map<Extreme, ExtremeState> = emptyMap(),
 ) {
     fun voteOf(tag: String): Vote = tags[tag] ?: Vote.NEUTRAL
 
-    fun voteOf(e: Extreme, low: Boolean): Vote =
-        extremes[e]?.let { if (low) it.first else it.second } ?: Vote.NEUTRAL
+    fun stateOf(e: Extreme): ExtremeState = extremes[e] ?: ExtremeState()
 
-    fun toggleTag(tag: String): Feedback =
-        copy(tags = tags + (tag to voteOf(tag).next()))
+    fun toggleTag(tag: String): Feedback = copy(tags = tags + (tag to voteOf(tag).next()))
 
-    fun toggleExtreme(e: Extreme, low: Boolean): Feedback {
-        val cur = extremes[e] ?: (Vote.NEUTRAL to Vote.NEUTRAL)
-        val next = if (low) cur.copy(first = cur.first.next()) else cur.copy(second = cur.second.next())
-        return copy(extremes = extremes + (e to next))
+    /** 項目そのものを押す。赤を抜けるときは選んでいた向きも消す */
+    fun toggleExtreme(e: Extreme): Feedback {
+        val next = stateOf(e).vote.next()
+        return copy(extremes = extremes + (e to ExtremeState(next, null)))
     }
 
-    fun toggleExpanded(e: Extreme): Feedback =
-        copy(expanded = if (e in expanded) expanded - e else expanded + e)
+    /** 「短すぎる/長すぎる」。排他。同じものをもう一度押すと解除 */
+    fun chooseSide(e: Extreme, side: Side): Feedback {
+        val cur = stateOf(e)
+        if (cur.vote != Vote.BAD) return this
+        return copy(extremes = extremes + (e to cur.copy(side = if (cur.side == side) null else side)))
+    }
 
     val badTags: List<String> get() = tags.filterValues { it == Vote.BAD }.keys.toList()
     val goodTags: List<String> get() = tags.filterValues { it == Vote.GOOD }.keys.toList()
 
-    /** サーバに渡す、数値項目への不満の言葉 */
+    /** サーバに渡す、数値項目への反応の言葉 */
     val extremeNotes: List<String>
-        get() = extremes.flatMap { (e, v) ->
-            buildList {
-                if (v.first == Vote.BAD) add("${label(e)}が${e.shortLabel}のは避けたい")
-                if (v.first == Vote.GOOD) add("${label(e)}は${e.shortLabel}くらいがいい")
-                if (v.second == Vote.BAD) add("${label(e)}が${e.longLabel}のは避けたい")
-                if (v.second == Vote.GOOD) add("${label(e)}は${e.longLabel}くらいがいい")
+        get() = extremes.mapNotNull { (e, s) ->
+            when {
+                s.vote == Vote.GOOD -> "${e.noun}はこれくらいがちょうどいい"
+                s.vote == Vote.BAD && s.side == Side.LOW -> "${e.noun}が${e.lowLabel}のは避けたい"
+                s.vote == Vote.BAD && s.side == Side.HIGH -> "${e.noun}が${e.highLabel}のは避けたい"
+                s.vote == Vote.BAD -> "${e.noun}がこれでは良くない"
+                else -> null
             }
         }
 
     val hasAny: Boolean get() =
-        tags.values.any { it != Vote.NEUTRAL } ||
-            extremes.values.any { it.first != Vote.NEUTRAL || it.second != Vote.NEUTRAL }
-
-    private fun label(e: Extreme) = when (e) {
-        Extreme.DETOUR -> "寄り道の時間"
-        Extreme.ETA -> "到着までの時間"
-        Extreme.PRICE -> "価格"
-    }
+        tags.values.any { it != Vote.NEUTRAL } || extremes.values.any { it.vote != Vote.NEUTRAL }
 }

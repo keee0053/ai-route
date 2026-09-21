@@ -35,6 +35,7 @@ import com.prizmprograms.ekz.data.EkzApi
 import com.prizmprograms.ekz.model.Candidate
 import com.prizmprograms.ekz.model.Extreme
 import com.prizmprograms.ekz.model.SearchUiState
+import com.prizmprograms.ekz.model.Side
 import com.prizmprograms.ekz.model.Vote
 
 /** いい感じ(緑)。Material のテーマに緑が無いので直接指定する */
@@ -53,8 +54,8 @@ fun PickScreen(
     routeSummary: String,
     onRequestChange: (String) -> Unit,
     onToggleTag: (String) -> Unit,
-    onToggleExpanded: (Extreme) -> Unit,
-    onToggleExtreme: (Extreme, Boolean) -> Unit,
+    onToggleExtreme: (Extreme) -> Unit,
+    onChooseSide: (Extreme, Side) -> Unit,
     onDecide: (Candidate) -> Unit,
     onNext: () -> Unit,
     onClear: () -> Unit,
@@ -113,9 +114,31 @@ fun PickScreen(
 
         Tags(c.tags, state, onToggleTag)
 
-        Fact("追加でかかる時間", "+" + c.detourMinutes + "分", Extreme.DETOUR, state, onToggleExpanded, onToggleExtreme)
-        Fact("あと何分でつく", state.etaMinutes.toString() + "分", Extreme.ETA, state, onToggleExpanded, onToggleExtreme)
-        Fact("価格相場", c.priceRange ?: "不明", Extreme.PRICE, state, onToggleExpanded, onToggleExtreme)
+        Fact(
+            label = "追加でかかる時間",
+            value = "+" + c.detourMinutes + "分",
+            note = "寄ると合計 " + state.totalMinutes + "分",
+            extreme = Extreme.DETOUR,
+            state = state,
+            onToggle = onToggleExtreme,
+            onChooseSide = onChooseSide,
+        )
+        Fact(
+            label = "そこに着くまで",
+            value = "約" + c.minutesToArrive + "分",
+            extreme = Extreme.ARRIVE,
+            state = state,
+            onToggle = onToggleExtreme,
+            onChooseSide = onChooseSide,
+        )
+        Fact(
+            label = "価格相場",
+            value = c.priceRange ?: "不明",
+            extreme = Extreme.PRICE,
+            state = state,
+            onToggle = onToggleExtreme,
+            onChooseSide = onChooseSide,
+        )
 
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -183,46 +206,90 @@ private fun Chip(text: String, vote: Vote, onClick: () -> Unit) {
     }
 }
 
+/**
+ * 数値の項目。行そのものを押すと 中立 → 赤 → 緑 → 中立 と背景が変わる。
+ * 赤のときだけ「短すぎる/長すぎる」が出て、どちらか片方だけ選べる。
+ */
 @Composable
 private fun Fact(
     label: String,
     value: String,
+    note: String? = null,
     extreme: Extreme,
     state: SearchUiState,
-    onToggleExpanded: (Extreme) -> Unit,
-    onToggleExtreme: (Extreme, Boolean) -> Unit,
+    onToggle: (Extreme) -> Unit,
+    onChooseSide: (Extreme, Side) -> Unit,
 ) {
-    val low = state.feedback.voteOf(extreme, true)
-    val high = state.feedback.voteOf(extreme, false)
-    val marked = low != Vote.NEUTRAL || high != Vote.NEUTRAL
+    val s = state.feedback.stateOf(extreme)
+    val bg = when (s.vote) {
+        Vote.NEUTRAL -> MaterialTheme.colorScheme.surface
+        Vote.BAD -> MaterialTheme.colorScheme.errorContainer
+        Vote.GOOD -> GoodBg
+    }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onToggleExpanded(extreme) }
-                .padding(vertical = 8.dp, horizontal = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(text = label, style = MaterialTheme.typography.bodyMedium)
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = if (marked) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurface,
-            )
-        }
-
-        if (extreme in state.feedback.expanded) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = bg,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onToggle(extreme) }
+                    .padding(vertical = 10.dp, horizontal = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Chip(text = extreme.shortLabel, vote = low) { onToggleExtreme(extreme, true) }
-                Chip(text = extreme.longLabel, vote = high) { onToggleExtreme(extreme, false) }
+                Column {
+                    Text(text = label, style = MaterialTheme.typography.bodyMedium)
+                    if (note != null) {
+                        Text(
+                            text = note,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                }
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+
+            if (s.vote == Vote.BAD) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 10.dp, bottom = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SideChip(extreme.lowLabel, s.side == Side.LOW) {
+                        onChooseSide(extreme, Side.LOW)
+                    }
+                    SideChip(extreme.highLabel, s.side == Side.HIGH) {
+                        onChooseSide(extreme, Side.HIGH)
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun SideChip(text: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected) MaterialTheme.colorScheme.error
+        else MaterialTheme.colorScheme.surface,
+        modifier = Modifier.clickable { onClick() },
+    ) {
+        Text(
+            text = text,
+            color = if (selected) MaterialTheme.colorScheme.onError
+            else MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+        )
     }
 }
 

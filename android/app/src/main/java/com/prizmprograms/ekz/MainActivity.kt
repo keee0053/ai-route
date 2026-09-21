@@ -106,8 +106,8 @@ private fun Search(info: RouteInfo, vm: SearchViewModel = viewModel()) {
         routeSummary = summary + (state.genre?.let { "  (" + it.label + ")" } ?: ""),
         onRequestChange = vm::onRequestChange,
         onToggleTag = vm::toggleTag,
-        onToggleExpanded = vm::toggleExpanded,
         onToggleExtreme = vm::toggleExtreme,
+        onChooseSide = vm::chooseSide,
         onDecide = { c ->
             NavLauncher.launch(context, NavLauncher.buildUrl(info, listOf(c.toPlace())))
         },

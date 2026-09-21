@@ -23,7 +23,8 @@ data class SearchUiState(
 ) {
     val started: Boolean get() = current != null || seen.isNotEmpty() || loading || error != null
 
-    val etaMinutes: Int get() = baseMinutes + (current?.detourMinutes ?: 0)
+    /** 寄り道した場合の合計所要時間 */
+    val totalMinutes: Int get() = baseMinutes + (current?.detourMinutes ?: 0)
 
     /** 今の反応を1行で。画面に出してユーザーに見せる */
     val summaryOfFeedback: String?
