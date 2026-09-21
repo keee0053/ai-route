@@ -112,6 +112,7 @@ private fun Search(info: RouteInfo, vm: SearchViewModel = viewModel()) {
             NavLauncher.launch(context, NavLauncher.buildUrl(info, listOf(c.toPlace())))
         },
         onNext = vm::next,
+        onBack = vm::back,
         onClear = vm::clearFeedback,
     )
 }

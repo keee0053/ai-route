@@ -140,13 +140,40 @@ async function handleNext(request, env) {
   const body = await request.json();
   if (!Array.isArray(body.candidates)) return fail("candidates が必要です", 400);
 
+  const req = body.request ?? "";
+  const badTags = body.badTags ?? [];
+  const goodTags = body.goodTags ?? [];
+  const notes = body.notes ?? [];
+
   const picked = await pickNext(env.TYPESAFE_API_KEY, body.candidates, {
-    request: body.request ?? "",
-    badTags: body.badTags ?? [],
-    goodTags: body.goodTags ?? [],
-    notes: body.notes ?? [],
+    request: req,
+    badTags,
+    goodTags,
+    notes,
   });
-  return json(picked ?? { id: null });
+
+  return json({
+    ...(picked ?? { id: null }),
+    reason: buildReason({ req, badTags, goodTags, notes }),
+  });
+}
+
+/**
+ * 「なぜこれを選んだか」の一言。
+ *
+ * Jev はテキストを作れないが、何を渡して選ばせたかはサーバが知っている。
+ * 生成モデルを挟まずに、その入力をそのまま言葉にする。速いし、嘘にならない。
+ */
+function buildReason({ req, badTags, goodTags, notes }) {
+  const parts = [];
+  if (req.trim()) parts.push(`「${req.trim()}」に合わせて`);
+  if (goodTags.length) parts.push(`「${goodTags.join("・")}」が好みとのことなので`);
+  if (badTags.length) parts.push(`「${badTags.join("・")}」を避けて`);
+  if (notes.length) parts.push(notes[0]);
+
+  if (parts.length === 0) return "評価が高くて寄り道も少ないので、ここを選びました";
+  // 全部並べると長くて読まれない。効く順に2つまで
+  return parts.slice(0, 2).join("、") + "、ここを選びました";
 }
 
 /**

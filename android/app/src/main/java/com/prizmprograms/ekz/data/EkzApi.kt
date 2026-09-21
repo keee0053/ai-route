@@ -36,7 +36,14 @@ private data class NextRequest(
 )
 
 @Serializable
-private data class NextResponse(val id: String? = null, val confidence: Double? = null)
+private data class NextResponse(
+    val id: String? = null,
+    val confidence: Double? = null,
+    val reason: String? = null,
+)
+
+/** 次の1件と、なぜそれを選んだかの一言 */
+data class Pick(val id: String?, val reason: String?)
 
 @Serializable
 private data class TagRequest(val candidate: Candidate)
@@ -68,12 +75,13 @@ class EkzApi(
         badTags: List<String>,
         goodTags: List<String>,
         notes: List<String>,
-    ): String? {
-        if (candidates.isEmpty()) return null
+    ): Pick {
+        if (candidates.isEmpty()) return Pick(null, null)
         val body = json.encodeToString(
             NextRequest(candidates.take(40), request, badTags, goodTags, notes),
         )
-        return json.decodeFromString<NextResponse>(post("/next", body)).id
+        val res = json.decodeFromString<NextResponse>(post("/next", body))
+        return Pick(res.id, res.reason)
     }
 
     /** その場所のタグを AI に都度作らせる。表示する1件だけ */

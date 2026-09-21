@@ -11,6 +11,12 @@ data class SearchUiState(
     val all: List<Candidate> = emptyList(),
     val current: Candidate? = null,
     val seen: Set<String> = emptySet(),
+
+    /** なぜこの1件を選んだかの一言 */
+    val reason: String? = null,
+
+    /** 見てきた順。「ひとつ前に戻る」に使う */
+    val history: List<Candidate> = emptyList(),
     val feedback: Feedback = Feedback(),
     val request: String = "",
 
@@ -18,6 +24,8 @@ data class SearchUiState(
     val baseMinutes: Int = 0,
 
     val loading: Boolean = false,
+    /** 探している最中に出す進捗の文言 */
+    val loadingStep: String? = null,
     val message: String? = null,
     val error: String? = null,
 ) {
@@ -38,6 +46,8 @@ data class SearchUiState(
             }
             return parts.ifEmpty { null }?.joinToString("  ")
         }
+
+    val canGoBack: Boolean get() = history.isNotEmpty()
 
     fun pool(): List<Candidate> = all.filterNot { it.id in seen }
 }

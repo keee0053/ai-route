@@ -20,11 +20,13 @@ class SearchViewModel(private val api: EkzApi = EkzApi()) : ViewModel() {
 
     /** ジャンルを選んで開始。genre が null なら「おまかせ」 */
     fun start(info: RouteInfo, genre: Genre?) {
-        _state.value = SearchUiState(genre = genre, loading = true)
+        _state.value = SearchUiState(genre = genre, loading = true, loadingStep = "ルートを調べています")
 
         viewModelScope.launch {
             runCatching {
-                api.search(info.origin.toQuery(), info.destination.toQuery(), genre?.id)
+                val r = api.search(info.origin.toQuery(), info.destination.toQuery(), genre?.id)
+                _state.value = _state.value.copy(loadingStep = "候補を集めています")
+                r
             }.onSuccess { result ->
                 _state.value = _state.value.copy(
                     all = result.candidates,
@@ -61,6 +63,19 @@ class SearchViewModel(private val api: EkzApi = EkzApi()) : ViewModel() {
 
     fun next() = advance(markSeen = true)
 
+    /** ひとつ前の店に戻る。もう一度見たくなることがある */
+    fun back() {
+        val s = _state.value
+        val prev = s.history.lastOrNull() ?: return
+        _state.value = s.copy(
+            current = prev,
+            history = s.history.dropLast(1),
+            seen = s.seen - prev.id,
+            reason = null,
+            message = null,
+        )
+    }
+
     fun clearFeedback() {
         val s = _state.value
         _state.value = s.copy(feedback = com.prizmprograms.ekz.model.Feedback(), message = null)
@@ -76,7 +91,15 @@ class SearchViewModel(private val api: EkzApi = EkzApi()) : ViewModel() {
         viewModelScope.launch {
             var s = _state.value
             val seen = if (markSeen && s.current != null) s.seen + s.current!!.id else s.seen
-            s = s.copy(seen = seen, loading = true, message = null, error = null)
+            val history = if (markSeen && s.current != null) s.history + s.current!! else s.history
+            s = s.copy(
+                seen = seen,
+                history = history,
+                loading = true,
+                loadingStep = "AIが選んでいます",
+                message = null,
+                error = null,
+            )
             _state.value = s
 
             var note: String? = null
@@ -92,13 +115,20 @@ class SearchViewModel(private val api: EkzApi = EkzApi()) : ViewModel() {
 
             runCatching {
                 val fb = s.feedback
-                val id = api.next(pool, s.request, fb.badTags, fb.goodTags, fb.extremeNotes)
-                val picked = pool.firstOrNull { it.id == id } ?: pool.first()
-                picked.copy(tags = runCatching { api.tag(picked) }.getOrDefault(emptyList()))
-            }.onSuccess { picked ->
-                _state.value = s.copy(current = picked, loading = false, message = note)
+                val pick = api.next(pool, s.request, fb.badTags, fb.goodTags, fb.extremeNotes)
+                val picked = pool.firstOrNull { it.id == pick.id } ?: pool.first()
+                _state.value = _state.value.copy(loadingStep = "この場所を調べています")
+                picked.copy(tags = runCatching { api.tag(picked) }.getOrDefault(emptyList())) to pick.reason
+            }.onSuccess { (picked, reason) ->
+                _state.value = s.copy(
+                    current = picked,
+                    reason = reason,
+                    loading = false,
+                    loadingStep = null,
+                    message = note,
+                )
             }.onFailure { e ->
-                _state.value = s.copy(loading = false, error = e.message)
+                _state.value = s.copy(loading = false, loadingStep = null, error = e.message)
             }
         }
     }

@@ -1,5 +1,11 @@
 package com.prizmprograms.ekz.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +18,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -61,6 +68,7 @@ fun PickScreen(
     onChooseSide: (Extreme, Side) -> Unit,
     onDecide: (Candidate) -> Unit,
     onNext: () -> Unit,
+    onBack: () -> Unit,
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -85,8 +93,17 @@ fun PickScreen(
         )
 
         if (state.loading) {
-            CircularProgressIndicator()
-            Text(text = "探しています...")
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                // 何をしているか出さないと、10秒の待ちが長く感じる
+                Text(
+                    text = state.loadingStep ?: "探しています",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
         }
 
         if (state.error != null) {
@@ -105,19 +122,41 @@ fun PickScreen(
             return@Column
         }
 
-        Photo(c)
+        // 切り替わりが分かるようにフェードさせる。パッと入れ替わると安っぽく見える
+        AnimatedContent(
+            targetState = c,
+            transitionSpec = {
+                (fadeIn(tween(220)) + slideInVertically { it / 12 })
+                    .togetherWith(fadeOut(tween(120)))
+            },
+            label = "candidate",
+        ) { shown ->
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Photo(shown)
 
-        Text(
-            text = c.name,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            text = c.category + "  " + (c.rating?.toString() ?: ""),
-            style = MaterialTheme.typography.bodyMedium,
-        )
+                // なぜこれを選んだか。店名の上に置くと「AIが選んだ」文脈で読める
+                val reason = state.reason
+                if (reason != null) {
+                    Text(
+                        text = reason,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
 
-        Tags(c.tags, state, onToggleTag)
+                Text(
+                    text = shown.name,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = shown.category + "  " + (shown.rating?.toString() ?: ""),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+
+                Tags(shown.tags, state, onToggleTag)
+            }
+        }
 
         Fact(
             label = "追加でかかる時間",
@@ -155,6 +194,12 @@ fun PickScreen(
             }
             OutlinedButton(onClick = onNext, modifier = Modifier.weight(1f)) {
                 Text(text = "別の場所")
+            }
+        }
+
+        if (state.canGoBack) {
+            TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
+                Text(text = "< ひとつ前の店に戻る")
             }
         }
 
