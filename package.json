@@ -1,0 +1,15 @@
+{
+  "name": "ekz",
+  "private": true,
+  "workspaces": [
+    "mobile",
+    "server"
+  ],
+  "scripts": {
+    "mobile": "npm run start -w mobile",
+    "mobile:android": "npm run android -w mobile",
+    "mobile:ios": "npm run ios -w mobile",
+    "mobile:typecheck": "npm run typecheck -w mobile",
+    "server": "npm run dev -w server"
+  }
+}
