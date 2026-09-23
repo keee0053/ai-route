@@ -19,6 +19,8 @@ type Props = {
  * API キーはサーバにあるので、端末は画像を受け取るだけ。取れなければ fallback を出す
  */
 const MAX_RETRIES = 2
+/** 目的地のピンを赤にした(9/24) */
+const MAP_STYLE_VERSION = 2
 const RETRY_DELAY_MS = 3000
 
 export function RouteMap({ origin, destination, waypoints = [], height, style, fallback, children }: Props) {
@@ -63,6 +65,8 @@ function endpointValue(endpoint: RouteEndpoint) {
 
 export function routeMapUrl(origin: RouteEndpoint, destination: RouteEndpoint, waypoints: Array<{ lat: number; lng: number }>, width: number, height: number) {
   const params = [
+    // 地図の描き方を変えたら上げる(サーバと端末の画像キャッシュを外すため)
+    `v=${MAP_STYLE_VERSION}`,
     `origin=${encodeURIComponent(endpointValue(origin))}`,
     `destination=${encodeURIComponent(endpointValue(destination))}`,
     `w=${Math.round(Math.min(width, 640))}`,

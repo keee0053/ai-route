@@ -72,7 +72,7 @@ export default function SharedRouteScreen() {
               <View style={styles.timeline}>
                 <View style={[styles.timelineDot, { backgroundColor: colors.brand }]} />
                 <View style={styles.timelineLine} />
-                <View style={[styles.timelineDot, { backgroundColor: colors.ink }]} />
+                <View style={[styles.timelineDot, { backgroundColor: colors.destination }]} />
               </View>
               <View style={styles.locations}>
                 <View><Text style={styles.label}>出発地</Text><Text style={styles.location}>{originName}</Text></View>
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   routeLineTwo: { width: 128, left: 170, top: 108 },
   dot: { position: 'absolute', width: 16, height: 16, borderRadius: 8, borderWidth: 3, borderColor: colors.white },
   originDot: { left: 49, top: 245, backgroundColor: colors.brand },
-  destinationDot: { right: 76, top: 51, backgroundColor: colors.ink },
+  destinationDot: { right: 76, top: 51, backgroundColor: colors.destination },
   receivedBadge: { position: 'absolute', top: 18, left: 18, flexDirection: 'row', gap: 9, alignItems: 'center', backgroundColor: colors.white, paddingHorizontal: 12, paddingVertical: 10, borderRadius: radius.medium, shadowColor: colors.ink, shadowOpacity: 0.1, shadowRadius: 12, elevation: 3 },
   badgeIcon: { width: 27, height: 27, borderRadius: 14, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
   badgeIconText: { color: colors.white, fontWeight: '800' },

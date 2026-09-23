@@ -13,6 +13,8 @@ export const colors = {
   warningSoft: '#FEF3C7',
   success: '#16A34A',
   danger: '#DC2626',
+  /** 目的地の印。Google マップと同じく赤 */
+  destination: '#DC2626',
 }
 
 export const radius = {
