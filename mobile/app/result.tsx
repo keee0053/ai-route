@@ -134,7 +134,7 @@ export default function ResultScreen() {
         <View style={styles.body}>
           <View style={styles.resultLabelRow}>
             <Text style={styles.eyebrow}>●  AIおすすめルート</Text>
-            {process.env.EXPO_PUBLIC_USE_DEMO_ROUTE !== 'false' ? <Text style={styles.demoBadge}>デモ</Text> : null}
+            {process.env.EXPO_PUBLIC_USE_DEMO_ROUTE === 'true' ? <Text style={styles.demoBadge}>デモ</Text> : null}
           </View>
           <Text style={styles.duration}>{formatDuration(route.recommendedRoute.durationMinutes)}</Text>
           <View style={styles.comparison}>
@@ -199,7 +199,7 @@ function waypointMeta(waypoint: Waypoint) {
   const details = [
     waypoint.category,
     waypoint.rating ? `★ ${waypoint.rating.toFixed(1)}` : null,
-    waypoint.detourMinutes ? `+${waypoint.detourMinutes}分` : null,
+    waypoint.detourMinutes ? `滞在込み +${waypoint.detourMinutes}分` : null,
   ].filter(Boolean)
   return details.join('  ·  ') || waypoint.tags?.join('・') || 'おすすめの寄り道'
 }
