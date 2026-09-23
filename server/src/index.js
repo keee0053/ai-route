@@ -2,6 +2,7 @@ import { computeRoute, searchAlongRoute, proxyPhoto, queriesForGenre } from "./g
 import { pickNext } from "./jev.js";
 import { generateTags, fallbackTags } from "./gemini.js";
 import { editRoutePlan, generateRoutePlan, RouteServiceError } from "./route-service.js";
+import { parseShareText } from "./share-link.js";
 
 // Bump this when the shape or filtering of cached data changes.
 const CACHE_VERSION = "v4";
@@ -25,6 +26,7 @@ export default {
           return json({
             name: "ekz-server",
             endpoints: [
+              "POST /parse-share",
               "POST /generate-route",
               "POST /edit-route",
               "POST /search",
@@ -33,6 +35,9 @@ export default {
               "GET /photo",
             ],
           });
+
+        case "POST /parse-share":
+          return await handleParseShare(request);
 
         case "POST /generate-route":
           return await handleGenerateRoute(request, env, ctx);
@@ -68,6 +73,16 @@ export default {
     }
   },
 };
+
+async function handleParseShare(request) {
+  const body = await readJson(request);
+  const current = body.current;
+  const hasCurrent = current && Number.isFinite(current.lat) && Number.isFinite(current.lng);
+  if (current != null && !hasCurrent) {
+    throw new RouteServiceError("INVALID_REQUEST", "currentは{lat,lng}で指定してください。", 400);
+  }
+  return json(await parseShareText(body.text, hasCurrent ? current : null));
+}
 
 async function handleGenerateRoute(request, env, ctx) {
   const body = await readJson(request);

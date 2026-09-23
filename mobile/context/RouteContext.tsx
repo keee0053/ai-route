@@ -24,10 +24,10 @@ type RouteState = {
 const RouteContext = createContext<RouteState | null>(null)
 
 export function RouteProvider({ children }: PropsWithChildren) {
-  const [googleMapsUrl, setGoogleMapsUrl] = useState(process.env.EXPO_PUBLIC_USE_DEMO_ROUTE === 'false' ? '' : demoUrl)
+  const [googleMapsUrl, setGoogleMapsUrl] = useState(process.env.EXPO_PUBLIC_USE_DEMO_ROUTE === 'true' ? demoUrl : '')
   const [preview, setPreview] = useState<RoutePreview | null>(null)
   const [result, setResult] = useState<GenerateRouteResponse | null>(null)
-  const [preferences, setPreferences] = useState<Preference[]>(['ocean', 'cafe'])
+  const [preferences, setPreferences] = useState<Preference[]>([])
   const [freeText, setFreeText] = useState('')
   const [timeConstraint, setTimeConstraint] = useState<TimeConstraint>({ type: 'none' })
   const [previewLoading, setPreviewLoading] = useState(false)

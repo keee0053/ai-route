@@ -32,7 +32,7 @@ export default function GeneratingScreen() {
   }
 
   const reviewInput = () => {
-    const destination = error?.code === 'MAPS_URL_PARSE_FAILED' || error?.code === 'ROUTE_NOT_FOUND' ? '/' : '/preferences'
+    const destination = error?.code === 'MAPS_URL_PARSE_FAILED' || error?.code === 'ROUTE_NOT_FOUND' || error?.code === 'LOCATION_UNAVAILABLE' ? '/' : '/preferences'
     clearError()
     router.replace(destination)
   }
