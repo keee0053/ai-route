@@ -133,13 +133,19 @@ TypeScript上の正本は`mobile/types/route.ts`の`GenerateRouteRequest`と
   "action": {
     "type": "replace",
     "waypointIndex": 0,
-    "excludedPlaceIds": ["ChIJ_already_shown"]
+    "excludedPlaceIds": ["ChIJ_already_shown"],
+    "badTags": ["カフェ", "混む"]
   }
 }
 ```
 
 `excludedPlaceIds`には「別の候補を見る」で既に表示した候補を入れる。
 サーバーは現在の全経由地とこれらの候補を除外し、条件内に収まる別候補を返す。
+
+`badTags`(任意・最大10件)は「何が違った?」でユーザーが選んだ特徴(消去型)。
+サーバーは名前か種別にその語を含む候補をまとめて外し、残りから「その特徴を避けて」選ぶ。
+全部消えてしまう場合は外さずに、選ぶときに避けさせるだけにする。
+replace のレスポンスには `eliminatedCount`(このリクエストで外した候補の数)が付く。
 
 ### Delete request
 

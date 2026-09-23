@@ -143,3 +143,63 @@ test("generateRoutePlan requires preferences to be an array", async () => {
     (error) => error instanceof RouteServiceError && error.code === "INVALID_REQUEST",
   );
 });
+
+test("editRoutePlan eliminates candidates similar to the rejected tags", async () => {
+  const more = [
+    ...candidates,
+    { id: "place-d", name: "港のカフェ2号店", category: "カフェ", lat: 34.66, lng: 135.17, rating: 4.8, detourMinutes: 10, routeRatio: 0.5 },
+    { id: "place-e", name: "山の温泉", category: "温泉", lat: 34.7, lng: 135.1, rating: 4.0, detourMinutes: 25, routeRatio: 0.6 },
+  ];
+  let feedbackSeen = null;
+  const deps = dependencies({
+    search: async () => ({ baseMinutes: 44, distanceKm: 38.7, candidates: more }),
+    pick: async (pool, _text, feedback) => {
+      feedbackSeen = feedback;
+      return { id: pool[0].id, reason: null };
+    },
+  });
+  const original = await generateRoutePlan({ ...generateInput, waypointCount: 1 }, deps);
+  const result = await editRoutePlan({
+    route: original,
+    preferences: [],
+    freeText: "",
+    timeConstraint: { type: "none" },
+    action: { type: "replace", waypointIndex: 0, excludedPlaceIds: [], badTags: ["カフェ", "展望台", "公園"] },
+  }, deps);
+
+  // 元の経由地を除いた4件のうち、温泉以外の3件が消える
+  assert.equal(original.waypoints.length, 1);
+  assert.deepEqual(feedbackSeen, { badTags: ["カフェ", "展望台", "公園"] });
+  assert.equal(result.waypoints[0].placeId, "place-e");
+  assert.equal(result.eliminatedCount, 3);
+});
+
+test("editRoutePlan keeps candidates when every one matches the rejected tags", async () => {
+  const cafes = candidates.map((candidate) => ({ ...candidate, category: "カフェ" }));
+  const deps = dependencies({ search: async () => ({ baseMinutes: 44, distanceKm: 38.7, candidates: cafes }) });
+  const original = await generateRoutePlan({ ...generateInput, waypointCount: 1 }, deps);
+  const result = await editRoutePlan({
+    route: original,
+    preferences: [],
+    freeText: "",
+    timeConstraint: { type: "none" },
+    action: { type: "replace", waypointIndex: 0, excludedPlaceIds: [], badTags: ["カフェ"] },
+  }, deps);
+
+  assert.equal(result.eliminatedCount, 0);
+  assert.ok(result.waypoints[0].placeId);
+});
+
+test("editRoutePlan rejects badTags that are not strings", async () => {
+  const original = await generateRoutePlan({ ...generateInput, waypointCount: 1 }, dependencies());
+  await assert.rejects(
+    () => editRoutePlan({
+      route: original,
+      preferences: [],
+      freeText: "",
+      timeConstraint: { type: "none" },
+      action: { type: "replace", waypointIndex: 0, badTags: [1] },
+    }, dependencies()),
+    (error) => error instanceof RouteServiceError && error.code === "INVALID_REQUEST",
+  );
+});

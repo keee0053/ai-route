@@ -85,11 +85,17 @@ export async function editRoutePlan(input, deps) {
     ...current.waypoints.map((waypoint) => waypoint.placeId),
     ...request.action.excludedPlaceIds,
   ]);
-  const pool = candidatePool(search.candidates, current.normalRoute.durationMinutes, request.timeConstraint)
+  const remaining = candidatePool(search.candidates, current.normalRoute.durationMinutes, request.timeConstraint)
     .filter((candidate) => !excluded.has(candidate.id));
-  if (pool.length === 0) throw noCandidates();
+  if (remaining.length === 0) throw noCandidates();
 
-  const picked = await safePick(pool, requestText(request), deps.pick);
+  // 消去型: 嫌だった特徴を持つ候補をまとめて外す。全部消えるなら外さず、選ぶときに避けさせるだけにする
+  const badTags = request.action.badTags;
+  const survivors = remaining.filter((candidate) => !matchesAnyTag(candidate, badTags));
+  const pool = survivors.length > 0 ? survivors : remaining;
+  const eliminatedCount = remaining.length - pool.length;
+
+  const picked = await safePick(pool, requestText(request), deps.pick, { badTags });
   const ordered = picked.candidate
     ? [picked.candidate, ...pool.filter((candidate) => candidate.id !== picked.candidate.id)]
     : pool;
@@ -112,14 +118,17 @@ export async function editRoutePlan(input, deps) {
   const waypoints = [...current.waypoints];
   waypoints[index] = await publicWaypoint(replacement, deps);
 
-  return routeResponse({
-    ...current,
-    recommendedRoute: recommended,
-    waypoints,
-    reason: picked.reason || `${replacement.name}へ立ち寄るルートに更新しました。`,
-    mapsOrigin: origin,
-    mapsDestination: destination,
-  });
+  return {
+    ...routeResponse({
+      ...current,
+      recommendedRoute: recommended,
+      waypoints,
+      reason: picked.reason || `${replacement.name}へ立ち寄るルートに更新しました。`,
+      mapsOrigin: origin,
+      mapsDestination: destination,
+    }),
+    eliminatedCount,
+  };
 }
 
 export function validateGenerateRequest(input) {
@@ -158,6 +167,7 @@ export function validateEditRequest(input) {
       excludedPlaceIds: Array.isArray(action.excludedPlaceIds)
         ? action.excludedPlaceIds.filter((id) => typeof id === "string").slice(0, 50)
         : [],
+      badTags: validateBadTags(action.badTags),
     },
   };
 }
@@ -219,10 +229,10 @@ async function pickWaypoints(pool, count, text, pick) {
   return { candidates: selected.sort(routeOrder), reason: reasons[0] ?? null };
 }
 
-async function safePick(candidates, text, pick) {
+async function safePick(candidates, text, pick, feedback = {}) {
   if (!pick) return { candidate: candidates[0], reason: null };
   try {
-    const result = await pick(candidates.slice(0, 40), text);
+    const result = await pick(candidates.slice(0, 40), text, feedback);
     return {
       candidate: candidates.find((candidate) => candidate.id === result?.id) ?? candidates[0],
       reason: result?.reason ?? null,
@@ -319,6 +329,20 @@ function validatePreferences(value) {
     throw invalid("preferencesに不正な値が含まれています。");
   }
   return preferences;
+}
+
+function validateBadTags(value) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw invalid("action.badTagsは文字列の配列で指定してください。");
+  }
+  return [...new Set(value.map((item) => item.trim()).filter((item) => item !== "" && item.length <= 20))].slice(0, 10);
+}
+
+/** 名前か種別にその語を含む候補を「似ている」とみなす。口コミまで見ると広く消えすぎる */
+export function matchesAnyTag(candidate, tags) {
+  const text = `${candidate.name ?? ""} ${candidate.category ?? ""}`;
+  return tags.some((tag) => text.includes(tag));
 }
 
 function validateTimeConstraint(value) {

@@ -99,7 +99,7 @@ function routeDependencies(request, env, ctx) {
     search: (origin, destination, genre) => getSearchData(origin, destination, genre, env, ctx),
     compute: (origin, destination, intermediates) =>
       computeRoute(env.GOOGLE_MAPS_SERVER_KEY, origin, destination, { intermediates }),
-    pick: (candidates, requestText) => selectCandidate(candidates, requestText, env),
+    pick: (candidates, requestText, feedback) => selectCandidate(candidates, requestText, env, feedback),
     tags: async (candidate) => (await getTagData(candidate, env, ctx)).tags,
     photoUrl: (photoName) => {
       const url = new URL("/photo", request.url);
