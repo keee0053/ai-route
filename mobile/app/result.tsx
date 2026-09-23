@@ -10,7 +10,7 @@ import { ApiError, editRoute } from '@/services/api'
 import type { EditRouteAction, GenerateRouteResponse } from '@/types/route'
 
 type Waypoint = GenerateRouteResponse['waypoints'][number]
-type EditMode = 'detail' | 'replace' | 'delete'
+type EditMode = 'detail' | 'ask' | 'replace' | 'delete'
 
 export default function ResultScreen() {
   const { result, preferences, freeText, timeConstraint, updateResult } = useRoute()
@@ -19,6 +19,10 @@ export default function ResultScreen() {
   const [mode, setMode] = useState<EditMode>('detail')
   const [replacement, setReplacement] = useState<GenerateRouteResponse | null>(null)
   const [excludedPlaceIds, setExcludedPlaceIds] = useState<string[]>([])
+  // 消去型: 「何が違った?」で選んだ特徴。シートを開いている間は積み重ねる
+  const [badTags, setBadTags] = useState<string[]>([])
+  const [askTarget, setAskTarget] = useState<Waypoint | null>(null)
+  const [pickedTags, setPickedTags] = useState<string[]>([])
   const [recalculating, setRecalculating] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
   const [highlighted, setHighlighted] = useState<number | null>(null)
@@ -33,6 +37,7 @@ export default function ResultScreen() {
     setMode('detail')
     setReplacement(null)
     setExcludedPlaceIds([])
+    setBadTags([])
     setEditError(null)
   }
 
@@ -61,21 +66,38 @@ export default function ResultScreen() {
     }
   }
 
+  const askWhatWasWrong = (target: Waypoint) => {
+    setAskTarget(target)
+    setPickedTags([])
+    setMode('ask')
+  }
+
   const openReplacement = () => {
-    if (selected === null) return
-    setMode('replace')
+    if (!waypoint) return
     setReplacement(null)
     setExcludedPlaceIds([])
-    void requestEdit({ type: 'replace', waypointIndex: selected, excludedPlaceIds: [] })
+    setBadTags([])
+    askWhatWasWrong(waypoint)
   }
 
   const showNextCandidate = () => {
-    if (selected === null || !candidate) return
-    const excluded = [...excludedPlaceIds, candidate.placeId]
-    setExcludedPlaceIds(excluded)
-    setReplacement(null)
-    void requestEdit({ type: 'replace', waypointIndex: selected, excludedPlaceIds: excluded })
+    if (!candidate) return
+    setExcludedPlaceIds((current) => [...current, candidate.placeId])
+    askWhatWasWrong(candidate)
   }
+
+  const searchAvoidingTags = () => {
+    if (selected === null) return
+    const nextBadTags = [...new Set([...badTags, ...pickedTags])]
+    setBadTags(nextBadTags)
+    setReplacement(null)
+    setMode('replace')
+    void requestEdit({ type: 'replace', waypointIndex: selected, excludedPlaceIds, badTags: nextBadTags })
+  }
+
+  const togglePickedTag = (tag: string) => setPickedTags((current) =>
+    current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag],
+  )
 
   const confirmReplacement = () => {
     if (selected === null || !replacement) return
@@ -90,7 +112,7 @@ export default function ResultScreen() {
   const retryEdit = () => {
     if (selected === null) return
     if (mode === 'replace') {
-      void requestEdit({ type: 'replace', waypointIndex: selected, excludedPlaceIds })
+      void requestEdit({ type: 'replace', waypointIndex: selected, excludedPlaceIds, badTags })
     } else {
       void requestEdit({ type: 'delete', waypointIndex: selected })
     }
@@ -171,8 +193,21 @@ export default function ResultScreen() {
             <><Text style={styles.sheetEyebrow}>更新できませんでした</Text><Text accessibilityRole="alert" style={styles.sheetMuted}>{editError}</Text><PrimaryButton onPress={retryEdit}>もう一度試す</PrimaryButton><PrimaryButton variant="secondary" onPress={() => setMode('detail')}>戻る</PrimaryButton></>
           ) : mode === 'detail' ? (
             <><Text style={styles.sheetEyebrow}>経由地 {selected === null ? '' : selected + 1}</Text><Text style={styles.sheetTitle}>{waypoint?.name}</Text><Text style={styles.sheetMuted}>この経由地を別の場所へ変更するか、ルートから削除できます。</Text><PrimaryButton onPress={openReplacement}>この場所を変更</PrimaryButton><PrimaryButton variant="secondary" onPress={() => setMode('delete')}>この場所を削除</PrimaryButton></>
+          ) : mode === 'ask' && askTarget ? (
+            <><Text style={styles.sheetEyebrow}>何が違った?</Text><Text style={styles.sheetTitle}>{askTarget.name}</Text><Text style={styles.sheetMuted}>気に入らなかった特徴を選ぶと、似た場所をまとめて外します。</Text>
+              <View style={styles.tagChips}>
+                {tagsOf(askTarget).map((tag) => {
+                  const active = pickedTags.includes(tag)
+                  return (
+                    <Pressable key={tag} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => togglePickedTag(tag)} style={[styles.tagChip, active && styles.tagChipActive]}>
+                      <Text style={[styles.tagChipText, active && styles.tagChipTextActive]}>{tag}</Text>
+                    </Pressable>
+                  )
+                })}
+              </View>
+              <PrimaryButton onPress={searchAvoidingTags}>{pickedTags.length > 0 ? `「${pickedTags.join('・')}」を避けて探す` : '特になし。別の場所を探す'}</PrimaryButton><PrimaryButton variant="secondary" onPress={() => setMode(candidate ? 'replace' : 'detail')}>戻る</PrimaryButton></>
           ) : mode === 'replace' && candidate ? (
-            <><Text style={styles.sheetEyebrow}>おすすめの変更先</Text><Text style={styles.sheetTitle}>{candidate.name}</Text><Text style={styles.candidateMeta}>{waypointMeta(candidate)}</Text><Text style={styles.sheetMuted}>{replacement?.reason}</Text><PrimaryButton onPress={confirmReplacement}>この場所に変更</PrimaryButton><PrimaryButton variant="secondary" onPress={showNextCandidate}>別の候補を見る</PrimaryButton></>
+            <><Text style={styles.sheetEyebrow}>おすすめの変更先</Text><Text style={styles.sheetTitle}>{candidate.name}</Text><Text style={styles.candidateMeta}>{waypointMeta(candidate)}</Text>{badTags.length > 0 ? <Text style={styles.eliminated}>{`「${badTags.join('・')}」を避けています`}{replacement?.eliminatedCount ? `・似た候補を${replacement.eliminatedCount}件はずしました` : ''}</Text> : null}<Text style={styles.sheetMuted}>{replacement?.reason}</Text><PrimaryButton onPress={confirmReplacement}>この場所に変更</PrimaryButton><PrimaryButton variant="secondary" onPress={showNextCandidate}>別の候補を見る</PrimaryButton></>
           ) : mode === 'delete' ? (
             <><Text style={styles.sheetEyebrow}>経由地を削除</Text><Text style={styles.sheetTitle}>{waypoint?.name}を外しますか？</Text><Text style={styles.sheetMuted}>残りの経由地を使ってルートを再計算します。</Text><PrimaryButton onPress={deleteWaypoint}>削除して再計算</PrimaryButton><PrimaryButton variant="secondary" onPress={() => setMode('detail')}>戻る</PrimaryButton></>
           ) : null}
@@ -180,6 +215,11 @@ export default function ResultScreen() {
       </Modal>
     </SafeAreaView>
   )
+}
+
+/** 「何が違った?」で出す特徴。種別も選べるようにする(「公園じゃない」など) */
+function tagsOf(waypoint: Waypoint) {
+  return [...new Set([waypoint.category, ...(waypoint.tags ?? [])].filter((tag): tag is string => Boolean(tag)))].slice(0, 10)
 }
 
 function editErrorMessage(caught: unknown) {
@@ -216,5 +256,7 @@ const styles = StyleSheet.create({
   number: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brand }, numberText: { color: colors.white, fontSize: 13, fontWeight: '800' }, waypointText: { flex: 1 }, waypointName: { color: colors.ink, fontSize: 15, fontWeight: '700' }, waypointTags: { color: colors.faint, fontSize: 12, marginTop: 2 }, editMark: { color: colors.brand, fontSize: 12, fontWeight: '700' },
   reasonCard: { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD', borderWidth: 1, borderRadius: radius.large, padding: 15, gap: 7 }, reasonLabel: { color: colors.brand, fontSize: 12, fontWeight: '800' }, reason: { color: '#475569', fontSize: 13, lineHeight: 20 }, actions: { gap: 9, marginTop: 4 }, errorText: { color: colors.danger, fontSize: 13, lineHeight: 19 },
   backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(15, 23, 42, 0.42)' }, sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.white, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 22, paddingTop: 10, paddingBottom: 34, gap: 12 },
+  tagChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 }, tagChip: { backgroundColor: '#F1F5F9', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8 }, tagChipActive: { backgroundColor: colors.ink }, tagChipText: { color: '#475569', fontSize: 13, fontWeight: '600' }, tagChipTextActive: { color: colors.white },
+  eliminated: { color: colors.brand, fontSize: 12, fontWeight: '700' },
   handle: { alignSelf: 'center', width: 42, height: 4, borderRadius: 2, backgroundColor: '#CBD5E1', marginBottom: 8 }, sheetEyebrow: { color: colors.brand, fontSize: 12, fontWeight: '800' }, sheetTitle: { color: colors.ink, fontSize: 21, lineHeight: 28, fontWeight: '800' }, sheetMuted: { color: colors.muted, fontSize: 13, lineHeight: 20, marginBottom: 4 }, candidateMeta: { color: colors.ink, backgroundColor: '#F1F5F9', borderRadius: 8, padding: 10, fontSize: 12, fontWeight: '700' }, recalculating: { minHeight: 250, alignItems: 'center', justifyContent: 'center', gap: 12 },
 })

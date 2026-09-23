@@ -40,6 +40,8 @@ export type GenerateRouteResponse = RoutePreview & {
   waypoints: RouteWaypoint[]
   reason: string
   googleMapsUrl: string
+  /** replace のときだけ。badTags で外した候補の数 */
+  eliminatedCount?: number
 }
 
 /** POST /generate-route request sent after the shared Maps URL is parsed. */
@@ -54,7 +56,7 @@ export type GenerateRouteRequest = {
 
 export type EditRouteAction =
   | { type: 'delete'; waypointIndex: number }
-  | { type: 'replace'; waypointIndex: number; excludedPlaceIds: string[] }
+  | { type: 'replace'; waypointIndex: number; excludedPlaceIds: string[]; badTags?: string[] }
 
 export type EditRouteRequest = {
   route: GenerateRouteResponse
