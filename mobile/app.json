@@ -9,6 +9,12 @@
     "plugins": [
       "expo-router",
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "現在地から出発するルートで、出発地として使います。"
+        }
+      ],
+      [
         "expo-share-intent",
         {
           "iosActivationRules": {

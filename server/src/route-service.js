@@ -10,6 +10,18 @@ const PREFERENCES = new Set([
   "quiet",
 ]);
 
+const PREFERENCE_LABELS = {
+  scenic: "景色",
+  ocean: "海沿い",
+  night_view: "夜景",
+  mountain: "山道",
+  cafe: "カフェ",
+  gourmet: "グルメ",
+  hot_spring: "温泉",
+  detour: "寄り道",
+  quiet: "静かな場所",
+};
+
 export class RouteServiceError extends Error {
   constructor(code, message, status = 400) {
     super(message);
@@ -325,13 +337,16 @@ function maximumExtraMinutes(baseMinutes, constraint) {
 
 function requestText(request) {
   if (request.freeText) return request.freeText;
-  if (request.preferences.length === 0) return "ルート沿いのおすすめ";
-  return request.preferences.join("・");
+  return preferenceLabels(request.preferences);
 }
 
 function defaultReason(preferences) {
   if (preferences.length === 0) return "ルート沿いで評価が高い場所を選びました。";
-  return `${preferences.join("・")}の希望に合う、ルート沿いの評価が高い場所を選びました。`;
+  return `${preferenceLabels(preferences)}の希望に合う、ルート沿いの評価が高い場所を選びました。`;
+}
+
+function preferenceLabels(preferences) {
+  return preferences.map((value) => PREFERENCE_LABELS[value] ?? value).join("・");
 }
 
 function routeOrder(a, b) {

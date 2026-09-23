@@ -55,7 +55,7 @@ export default function SharedRouteScreen() {
   }
 
   const originName = preview?.origin.name ?? 'Google Mapsから共有してください'
-  const destinationName = preview?.destination.name ?? '目的地を読み込みます'
+  const destinationName = preview?.destination.name ?? (googleMapsUrl ? '目的地を読み込みます' : 'Googleマップで経路を出し「共有」からこのアプリを選ぶ')
   const duration = preview ? `約${preview.normalRoute.durationMinutes}分` : '—'
   const distance = preview ? `${(preview.normalRoute.distanceMeters / 1000).toFixed(1)} km` : '—'
 

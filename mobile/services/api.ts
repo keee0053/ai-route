@@ -6,11 +6,12 @@ import type {
   RouteApiErrorCode,
   RoutePreview,
 } from '@/types/route'
+import * as Location from 'expo-location'
 
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://ekz-server.prizmprograms.workers.dev'
 
 type ApiErrorBody = { error?: string | { code?: string; message?: string } }
-type ParsedRoute = { origin: string; destination: string }
+type ParsedRoute = { origin: string; destination: string; originIsCurrentLocation: boolean }
 
 type SearchResponse = {
   baseMinutes: number
@@ -19,6 +20,8 @@ type SearchResponse = {
 
 export type HealthResponse = { ok: true }
 export type ApiErrorCode = RouteApiErrorCode
+  | 'ORIGIN_REQUIRED'
+  | 'LOCATION_UNAVAILABLE'
   | 'NETWORK_ERROR'
   | 'TIMEOUT'
   | 'MAPS_URL_PARSE_FAILED'
@@ -51,7 +54,7 @@ export async function getRoutePreview(googleMapsUrl: string): Promise<RoutePrevi
   const route = await parseSharedRoute(googleMapsUrl)
   const search = await searchCandidates(route.origin, route.destination)
   return {
-    origin: endpoint(route.origin),
+    origin: route.originIsCurrentLocation ? { ...endpoint(route.origin), name: '現在地' } : endpoint(route.origin),
     destination: endpoint(route.destination),
     normalRoute: {
       durationMinutes: search.baseMinutes,
@@ -102,50 +105,41 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return payload
 }
 
+// 共有テキストの読み取りはサーバで行う(短縮URLの展開・形式の判定を1か所にまとめる)。
+// 出発地が現在地のルートは、サーバに言われたときだけ端末の現在地を取って送り直す。
+const parsedRoutes = new Map<string, ParsedRoute>()
+
 async function parseSharedRoute(sharedText: string): Promise<ParsedRoute> {
-  const extracted = sharedText.match(/https?:\/\/\S+/)?.[0] ?? sharedText.trim()
-  if (!extracted) {
+  const text = sharedText.trim()
+  if (!text) {
     throw new ApiError('Google Mapsで出発地と目的地を設定し、ルートを共有してください。', 'MAPS_URL_PARSE_FAILED')
   }
+  const cached = parsedRoutes.get(text)
+  if (cached) return cached
 
-  let url: URL
+  let parsed: ParsedRoute
   try {
-    url = new URL(extracted)
+    parsed = await postJson<ParsedRoute>('/parse-share', { text })
+  } catch (caught) {
+    if (!(caught instanceof ApiError) || caught.code !== 'ORIGIN_REQUIRED') throw caught
+    parsed = await postJson<ParsedRoute>('/parse-share', { text, current: await currentPosition() })
+  }
+  parsedRoutes.set(text, parsed)
+  return parsed
+}
+
+async function currentPosition() {
+  const permission = await Location.requestForegroundPermissionsAsync()
+  if (!permission.granted) {
+    throw new ApiError('出発地が現在地のルートです。位置情報の利用を許可してください。', 'LOCATION_UNAVAILABLE')
+  }
+  try {
+    const position = await Location.getLastKnownPositionAsync({ maxAge: 5 * 60 * 1000 })
+      ?? await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+    return { lat: position.coords.latitude, lng: position.coords.longitude }
   } catch {
-    throw new ApiError('Google Mapsの共有URLを確認してください。', 'MAPS_URL_PARSE_FAILED')
+    throw new ApiError('現在地を取得できませんでした。', 'LOCATION_UNAVAILABLE', true)
   }
-
-  if (!isGoogleMapsHost(url.hostname)) {
-    throw new ApiError('Google MapsのルートURLを共有してください。', 'MAPS_URL_PARSE_FAILED')
-  }
-
-  if (url.hostname === 'maps.app.goo.gl' || url.hostname === 'goo.gl') {
-    const response = await fetchWithTimeout(extracted, { method: 'GET' }, 10000)
-    try {
-      url = new URL(response.url || extracted)
-    } catch {
-      throw new ApiError('Google Mapsの短縮URLを読み取れませんでした。', 'MAPS_URL_PARSE_FAILED')
-    }
-  }
-
-  const queryOrigin = url.searchParams.get('origin')
-  const queryDestination = url.searchParams.get('destination')
-  if (queryOrigin && queryDestination) {
-    return { origin: cleanPlace(queryOrigin), destination: cleanPlace(queryDestination) }
-  }
-
-  const segments = url.pathname.split('/').filter(Boolean)
-  const dirIndex = segments.indexOf('dir')
-  const places = segments
-    .slice(dirIndex + 1)
-    .filter((segment) => !segment.startsWith('@') && !segment.startsWith('data='))
-    .map(cleanPlace)
-    .filter(Boolean)
-
-  if (dirIndex >= 0 && places.length >= 2) {
-    return { origin: places[0]!, destination: places.at(-1)! }
-  }
-  throw new ApiError('出発地と目的地を含むGoogle Mapsのルートを共有してください。', 'MAPS_URL_PARSE_FAILED')
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 20000) {
@@ -163,12 +157,6 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 2000
   }
 }
 
-function isGoogleMapsHost(hostname: string) {
-  return hostname === 'goo.gl'
-    || hostname === 'maps.app.goo.gl'
-    || hostname === 'google.com'
-    || hostname.endsWith('.google.com')
-}
 
 function isAbortError(caught: unknown) {
   return caught instanceof Error && caught.name === 'AbortError'
@@ -177,6 +165,8 @@ function isAbortError(caught: unknown) {
 function normalizeErrorCode(code: string | undefined, status: number): ApiErrorCode {
   const knownCodes: ApiErrorCode[] = [
     'INVALID_REQUEST',
+    'ORIGIN_REQUIRED',
+    'MAPS_URL_PARSE_FAILED',
     'ROUTE_NOT_FOUND',
     'NO_CANDIDATES',
     'UPSTREAM_ERROR',
@@ -199,13 +189,6 @@ function messageForStatus(status: number) {
   return 'ルートを作成できませんでした。'
 }
 
-function cleanPlace(value: string) {
-  try {
-    return decodeURIComponent(value.replace(/\+/g, ' ')).trim()
-  } catch {
-    return value.replace(/\+/g, ' ').trim()
-  }
-}
 
 function endpoint(value: string) {
   const [lat, lng] = value.split(',').map(Number)
