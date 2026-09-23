@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors } from '@/constants/theme'
 import { PrimaryButton } from '@/components/PrimaryButton'
+import { RouteMap } from '@/components/RouteMap'
 import { useRoute } from '@/context/RouteContext'
 
 const steps = ['希望を分析中', 'ルート周辺を検索中', '寄り道候補を比較中', 'おすすめルートを作成中']
@@ -11,7 +12,7 @@ const steps = ['希望を分析中', 'ルート周辺を検索中', '寄り道�
 export default function GeneratingScreen() {
   const [activeStep, setActiveStep] = useState(0)
   const [attempt, setAttempt] = useState(0)
-  const { createRoute, error, clearError, routeLoading } = useRoute()
+  const { createRoute, error, clearError, routeLoading, preview } = useRoute()
 
   useEffect(() => {
     let mounted = true
@@ -41,10 +42,10 @@ export default function GeneratingScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.mapBackdrop}>
-        <View style={styles.water} />
-        <View style={[styles.route, styles.routeOne]} />
-        <View style={[styles.route, styles.routeTwo]} />
-        {[0, 1, 2].map((item) => <View key={item} style={[styles.searchDot, { top: 175 + item * 95, left: 90 + item * 52 }]} />)}
+        {preview ? (
+          // 探している経路を本物の地図で見せる(取れなければ飾り)
+          <RouteMap origin={preview.origin} destination={preview.destination} height={520} fallback={<Decoration />} />
+        ) : <Decoration />}
       </View>
       <View style={styles.panel}>
         <Text style={styles.title}>{error ? 'ルートを作れませんでした' : 'あなた向けのルートを\n作っています'}</Text>
@@ -69,6 +70,17 @@ export default function GeneratingScreen() {
         ) : null}
       </View>
     </SafeAreaView>
+  )
+}
+
+function Decoration() {
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      <View style={styles.water} />
+      <View style={[styles.route, styles.routeOne]} />
+      <View style={[styles.route, styles.routeTwo]} />
+      {[0, 1, 2].map((item) => <View key={item} style={[styles.searchDot, { top: 175 + item * 95, left: 90 + item * 52 }]} />)}
+    </View>
   )
 }
 

@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useState } from 'react'
 import { router } from 'expo-router'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { PrimaryButton } from '@/components/PrimaryButton'
+import { RouteMap } from '@/components/RouteMap'
 import { colors, radius } from '@/constants/theme'
 import { getHealth } from '@/services/api'
 import { useRoute } from '@/context/RouteContext'
+import type { RoutePreview } from '@/types/route'
 
 type ConnectionState = 'checking' | 'online' | 'offline'
 
@@ -47,12 +49,8 @@ export default function SharedRouteScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.map}>
-          <View style={styles.water} />
-          <View style={[styles.routeLine, styles.routeLineOne]} />
-          <View style={[styles.routeLine, styles.routeLineTwo]} />
-          <View style={[styles.dot, styles.originDot]} />
-          <View style={[styles.dot, styles.destinationDot]} />
+        {/* 共有されたルートを本物の地図で出す。取れるまで(取れなければずっと)飾りの地図 */}
+        <MapArea preview={preview}>
           <View style={styles.receivedBadge}>
             <View style={styles.badgeIcon}><Text style={styles.badgeIconText}>G</Text></View>
             <View>
@@ -62,7 +60,7 @@ export default function SharedRouteScreen() {
               </Text>
             </View>
           </View>
-        </View>
+        </MapArea>
 
         <View style={styles.body}>
           <View style={styles.headingBlock}>
@@ -121,6 +119,20 @@ export default function SharedRouteScreen() {
       </ScrollView>
     </SafeAreaView>
   )
+}
+
+function MapArea({ preview, children }: { preview: RoutePreview | null; children: ReactNode }) {
+  const decoration = (
+    <View style={[StyleSheet.absoluteFill, styles.map]}>
+      <View style={styles.water} />
+      <View style={[styles.routeLine, styles.routeLineOne]} />
+      <View style={[styles.routeLine, styles.routeLineTwo]} />
+      <View style={[styles.dot, styles.originDot]} />
+      <View style={[styles.dot, styles.destinationDot]} />
+    </View>
+  )
+  if (!preview) return <View style={{ height: 300 }}>{decoration}{children}</View>
+  return <RouteMap origin={preview.origin} destination={preview.destination} height={300} fallback={decoration}>{children}</RouteMap>
 }
 
 const styles = StyleSheet.create({
