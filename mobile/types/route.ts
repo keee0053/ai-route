@@ -22,6 +22,8 @@ export type RoutePreview = {
   origin: RouteEndpoint
   destination: RouteEndpoint
   normalRoute: RouteSummary
+  /** ルート沿いの寄り道候補の数(最初の画面で見せる) */
+  candidateCount?: number
 }
 
 export type RouteWaypoint = {

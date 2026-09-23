@@ -29,7 +29,7 @@ export function RouteProvider({ children }: PropsWithChildren) {
   const [result, setResult] = useState<GenerateRouteResponse | null>(null)
   const [preferences, setPreferences] = useState<Preference[]>([])
   const [freeText, setFreeText] = useState('')
-  const [timeConstraint, setTimeConstraint] = useState<TimeConstraint>({ type: 'none' })
+  const [timeConstraint, setTimeConstraint] = useState<TimeConstraint>({ type: 'extra_time', minutes: 30 })
   const [previewLoading, setPreviewLoading] = useState(false)
   const [routeLoading, setRouteLoading] = useState(false)
   const [error, setError] = useState<ApiError | null>(null)
