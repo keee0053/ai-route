@@ -1,5 +1,6 @@
 // デモで使うルートの結果をサーバのキャッシュに載せておく。
 //   node warm-cache.mjs
+//   ONLY=サイボウズ node warm-cache.mjs   (1ルートだけ)
 //
 // 当日 Places や Gemini がレート制限・障害を起こしても、
 // 温めておいたルートは キャッシュから返るので影響を受けない。
@@ -8,6 +9,8 @@ const BASE = "https://ekz-server.prizmprograms.workers.dev";
 
 /** デモで使うルート。増やしたらここに足す */
 const ROUTES = [
+  // 9/27 デモデイ: 発表会場(サイボウズ大阪)の現在地 → キックオフ会場(ストライク・京都 烏丸四条)
+  { name: "サイボウズ大阪 → ストライク京都", origin: "大阪府大阪市北区角田町8-1 大阪梅田ツインタワーズ・ノース", destination: "35.0048188,135.759705", tagsPerGenre: { any: 30 } },
   { name: "京都 → 舞子海上プロムナード", origin: "35.0048188,135.759705", destination: "34.6311072,135.0333283" },
 ];
 
@@ -32,7 +35,9 @@ let generated = 0;
 let cached = 0;
 let failed = 0;
 
-for (const route of ROUTES) {
+// ONLY=サイボウズ のように名前の一部を渡すと、そのルートだけ温める
+const only = process.env.ONLY;
+for (const route of ROUTES.filter((r) => !only || r.name.includes(only))) {
   console.log(`\n=== ${route.name} ===`);
 
   for (const genre of GENRES) {
@@ -47,7 +52,9 @@ for (const route of ROUTES) {
     }
     console.log(`  ${label.padEnd(12)} 候補 ${search.count} 件 (基準 ${search.baseMinutes}分)`);
 
-    for (const c of search.candidates.slice(0, TAGS_PER_GENRE)) {
+    const tagCount = route.tagsPerGenre?.[genre ?? "any"] ?? TAGS_PER_GENRE;
+    for (const c of search.candidates.slice(0, tagCount)) {
+      const startedAt = Date.now();
       try {
         const r = await post("/tag", { candidate: c });
         if (r.source === "gemini") {
@@ -61,8 +68,8 @@ for (const route of ROUTES) {
         failed++;
         console.log(`      失敗   ${c.name}  ${e.message}`);
       }
-      // 無料枠に配慮して間隔を空ける
-      await sleep(4000);
+      // 無料枠に配慮して間隔を空ける。すぐ返った(キャッシュ済み)ときは待たない
+      if (Date.now() - startedAt > 1500) await sleep(12000);
     }
   }
 }

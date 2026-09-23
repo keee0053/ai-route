@@ -1,11 +1,13 @@
 import { computeRoute, searchAlongRoute, proxyPhoto, queriesForGenre } from "./google.js";
-import { pickNext } from "./jev.js";
+import { pickNext, tagWithJev } from "./jev.js";
 import { generateTags, fallbackTags } from "./gemini.js";
 import { editRoutePlan, generateRoutePlan, RouteServiceError } from "./route-service.js";
 import { parseShareText } from "./share-link.js";
 
-// 経由地のタグ(Gemini)をこれ以上待たない。間に合わなければ簡易タグで返し、生成は裏で続けてキャッシュする
-const TAG_WAIT_MS = 4000;
+// 経由地のタグ。Gemini のキャッシュがあればそれを使う。無ければこの時間だけ待ち、
+// 間に合わなければ Jev のタグ(0.3秒)で返す。Gemini の生成は裏で続けてキャッシュする
+const GEMINI_TAG_WAIT_MS = 800;
+const LATE_TAG_WAIT_MS = 3000;
 
 // Bump this when the shape or filtering of cached data changes.
 const CACHE_VERSION = "v4";
@@ -103,19 +105,34 @@ function routeDependencies(request, env, ctx) {
     compute: (origin, destination, intermediates) =>
       computeRoute(env.GOOGLE_MAPS_SERVER_KEY, origin, destination, { intermediates }),
     pick: (candidates, requestText, feedback) => selectCandidate(candidates, requestText, env, feedback),
-    tags: async (candidate) => {
-      const pending = getTagData(candidate, env, ctx);
-      ctx.waitUntil(pending.catch(() => {}));
-      const timeout = new Promise((resolve) => setTimeout(() => resolve(null), TAG_WAIT_MS));
-      const data = await Promise.race([pending, timeout]);
-      return data ? data.tags : fallbackTags(candidate);
-    },
+    tags: (candidate) => quickTags(candidate, env, ctx),
     photoUrl: (photoName) => {
       const url = new URL("/photo", request.url);
       url.searchParams.set("name", photoName);
       return url.toString();
     },
   };
+}
+
+async function quickTags(candidate, env, ctx) {
+  const wait = (ms) => new Promise((resolve) => setTimeout(() => resolve(null), ms));
+  const gemini = getTagData(candidate, env, ctx);
+  ctx.waitUntil(gemini.catch(() => {}));
+  const jev = env.TYPESAFE_API_KEY
+    ? tagWithJev(env.TYPESAFE_API_KEY, candidate).catch((error) => {
+      console.warn("Jev tagging failed", error);
+      return null;
+    })
+    : Promise.resolve(null);
+
+  const early = await Promise.race([gemini.catch(() => null), wait(GEMINI_TAG_WAIT_MS)]);
+  if (early?.source === "gemini") return early.tags;
+
+  const judged = await jev;
+  if (judged?.length) return judged;
+
+  const late = await Promise.race([gemini.catch(() => null), wait(LATE_TAG_WAIT_MS)]);
+  return late?.tags ?? fallbackTags(candidate);
 }
 
 /** Legacy endpoint used by older clients and the route preview. */
