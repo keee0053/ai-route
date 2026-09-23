@@ -11,7 +11,14 @@ import * as Location from 'expo-location'
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://ekz-server.prizmprograms.workers.dev'
 
 type ApiErrorBody = { error?: string | { code?: string; message?: string } }
-type ParsedRoute = { origin: string; destination: string; originIsCurrentLocation: boolean }
+type ParsedRoute = {
+  origin: string
+  destination: string
+  originIsCurrentLocation: boolean
+  /** 座標で届いた地点の表示名(「現在地」など)。地名で届いたときは無い */
+  originLabel?: string
+  destinationLabel?: string
+}
 
 type SearchResponse = {
   baseMinutes: number
@@ -54,8 +61,8 @@ export async function getRoutePreview(googleMapsUrl: string): Promise<RoutePrevi
   const route = await parseSharedRoute(googleMapsUrl)
   const search = await searchCandidates(route.origin, route.destination)
   return {
-    origin: route.originIsCurrentLocation ? { ...endpoint(route.origin), name: '現在地' } : endpoint(route.origin),
-    destination: endpoint(route.destination),
+    origin: labeled(endpoint(route.origin), route.originLabel),
+    destination: labeled(endpoint(route.destination), route.destinationLabel),
     normalRoute: {
       durationMinutes: search.baseMinutes,
       distanceMeters: Math.round(search.distanceKm * 1000),
@@ -73,7 +80,17 @@ export async function generateRoute(input: GenerateRouteInput): Promise<Generate
     timeConstraint: input.timeConstraint,
     waypointCount: 2,
   }
-  return postJson<GenerateRouteResponse>('/generate-route', request)
+  const result = await postJson<GenerateRouteResponse>('/generate-route', request)
+  // サーバは座標をそのまま名前にするので、表示名を付け直す。編集ではこの名前がそのまま引き継がれる
+  return {
+    ...result,
+    origin: labeled(result.origin, route.originLabel),
+    destination: labeled(result.destination, route.destinationLabel),
+  }
+}
+
+function labeled<T extends { name: string }>(value: T, label: string | undefined): T {
+  return label ? { ...value, name: label } : value
 }
 
 export async function editRoute(input: EditRouteRequest): Promise<GenerateRouteResponse> {
@@ -124,8 +141,46 @@ async function parseSharedRoute(sharedText: string): Promise<ParsedRoute> {
     if (!(caught instanceof ApiError) || caught.code !== 'ORIGIN_REQUIRED') throw caught
     parsed = await postJson<ParsedRoute>('/parse-share', { text, current: await currentPosition() })
   }
+  parsed = {
+    ...parsed,
+    originLabel: parsed.originIsCurrentLocation ? '現在地' : await labelForCoordinates(parsed.origin),
+    destinationLabel: await labelForCoordinates(parsed.destination),
+  }
   parsedRoutes.set(text, parsed)
   return parsed
+}
+
+const NEAR_CURRENT_METERS = 1000
+
+/**
+ * 座標で届いた地点の表示名。Google マップは現在地から共有すると出発地を座標で入れてくるので、
+ * 端末の現在地から近ければ「現在地」、遠ければ地図で指定した地点とみなす。地名なら undefined。
+ * 位置情報は許可済みのときだけ見る(ここで許可を求めない)。
+ */
+async function labelForCoordinates(value: string) {
+  const [lat, lng] = value.split(',').map(Number)
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || value.split(',').length !== 2) return undefined
+  try {
+    const permission = await Location.getForegroundPermissionsAsync()
+    if (permission.granted) {
+      const here = await Location.getLastKnownPositionAsync({ maxAge: 10 * 60 * 1000 })
+        ?? await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+        ])
+      if (here && distanceMeters(lat!, lng!, here.coords.latitude, here.coords.longitude) <= NEAR_CURRENT_METERS) return '現在地'
+    }
+  } catch {
+    // 位置が取れなくても表示名が変わるだけなので続ける
+  }
+  return '指定した地点'
+}
+
+function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const rad = Math.PI / 180
+  const x = (lng2 - lng1) * rad * Math.cos(((lat1 + lat2) / 2) * rad)
+  const y = (lat2 - lat1) * rad
+  return Math.sqrt(x * x + y * y) * 6371000
 }
 
 async function currentPosition() {

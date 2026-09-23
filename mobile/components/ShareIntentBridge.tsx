@@ -11,7 +11,8 @@ export function ShareIntentBridge() {
 
   useEffect(() => {
     if (!hasShareIntent) return
-    const sharedValue = shareIntent.webUrl ?? extractUrl(shareIntent.text) ?? shareIntent.text ?? ''
+    // webUrl はカンマで切れる(/dir/34.7,135.5/… が途中で終わる)ので、共有テキストから取り出すほうを優先する
+    const sharedValue = extractUrl(shareIntent.text) ?? shareIntent.webUrl ?? shareIntent.text ?? ''
     void receiveSharedUrl(sharedValue).finally(() => {
       resetShareIntent()
       router.replace('/')
