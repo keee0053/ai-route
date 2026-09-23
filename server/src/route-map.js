@@ -20,7 +20,8 @@ export function staticMapUrl(key, { polyline, origin, destination, waypoints = [
   params.append("path", `weight:6|color:0x0EA5E9ff|enc:${encodePolyline(points)}`);
   const [start, end] = [points[0], points.at(-1)];
   params.append("markers", `size:mid|color:0x0F172A|${origin ?? `${start[0]},${start[1]}`}`);
-  params.append("markers", `size:mid|color:0x0284C7|${destination ?? `${end[0]},${end[1]}`}`);
+  // 目的地は赤(Google マップと同じ)
+  params.append("markers", `size:mid|color:0xDC2626|${destination ?? `${end[0]},${end[1]}`}`);
   waypoints.forEach(([lat, lng], i) => {
     params.append("markers", `color:0xF97316|label:${i + 1}|${lat},${lng}`);
   });
