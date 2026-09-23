@@ -4,6 +4,9 @@ import { generateTags, fallbackTags } from "./gemini.js";
 import { editRoutePlan, generateRoutePlan, RouteServiceError } from "./route-service.js";
 import { parseShareText } from "./share-link.js";
 
+// 経由地のタグ(Gemini)をこれ以上待たない。間に合わなければ簡易タグで返し、生成は裏で続けてキャッシュする
+const TAG_WAIT_MS = 4000;
+
 // Bump this when the shape or filtering of cached data changes.
 const CACHE_VERSION = "v4";
 
@@ -100,7 +103,13 @@ function routeDependencies(request, env, ctx) {
     compute: (origin, destination, intermediates) =>
       computeRoute(env.GOOGLE_MAPS_SERVER_KEY, origin, destination, { intermediates }),
     pick: (candidates, requestText, feedback) => selectCandidate(candidates, requestText, env, feedback),
-    tags: async (candidate) => (await getTagData(candidate, env, ctx)).tags,
+    tags: async (candidate) => {
+      const pending = getTagData(candidate, env, ctx);
+      ctx.waitUntil(pending.catch(() => {}));
+      const timeout = new Promise((resolve) => setTimeout(() => resolve(null), TAG_WAIT_MS));
+      const data = await Promise.race([pending, timeout]);
+      return data ? data.tags : fallbackTags(candidate);
+    },
     photoUrl: (photoName) => {
       const url = new URL("/photo", request.url);
       url.searchParams.set("name", photoName);

@@ -169,7 +169,7 @@ test("editRoutePlan eliminates candidates similar to the rejected tags", async (
 
   // 元の経由地を除いた4件のうち、温泉以外の3件が消える
   assert.equal(original.waypoints.length, 1);
-  assert.deepEqual(feedbackSeen, { badTags: ["カフェ", "展望台", "公園"] });
+  assert.deepEqual(feedbackSeen, { badTags: ["カフェ", "展望台", "公園"], goodTags: [] });
   assert.equal(result.waypoints[0].placeId, "place-e");
   assert.equal(result.eliminatedCount, 3);
 });
@@ -202,4 +202,35 @@ test("editRoutePlan rejects badTags that are not strings", async () => {
     }, dependencies()),
     (error) => error instanceof RouteServiceError && error.code === "INVALID_REQUEST",
   );
+});
+
+test("editRoutePlan passes liked tags to the picker without eliminating anything", async () => {
+  let feedbackSeen = null;
+  const deps = dependencies({
+    pick: async (pool, _text, feedback) => {
+      feedbackSeen = feedback;
+      return { id: pool[0].id, reason: null };
+    },
+  });
+  const original = await generateRoutePlan({ ...generateInput, waypointCount: 1 }, deps);
+  const result = await editRoutePlan({
+    route: original,
+    preferences: [],
+    freeText: "",
+    timeConstraint: { type: "none" },
+    action: { type: "replace", waypointIndex: 0, excludedPlaceIds: [], goodTags: ["景色"] },
+  }, deps);
+
+  assert.deepEqual(feedbackSeen, { badTags: [], goodTags: ["景色"] });
+  assert.equal(result.eliminatedCount, 0);
+});
+
+test("route responses keep leg minutes and waypoint arrival details", async () => {
+  const result = await generateRoutePlan({ ...generateInput, waypointCount: 1 }, dependencies({
+    compute: async () => ({ durationMinutes: 50, distanceMeters: 40000, legMinutes: [20, 30] }),
+  }));
+
+  assert.deepEqual(result.recommendedRoute.legMinutes, [20, 30]);
+  assert.equal(typeof result.waypoints[0].stayMinutes, "number");
+  assert.ok("priceRange" in result.waypoints[0]);
 });
