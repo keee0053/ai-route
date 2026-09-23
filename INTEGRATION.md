@@ -28,10 +28,10 @@ Override it for development with EXPO_PUBLIC_API_URL.
 
 ## Deliberately left for team integration
 
-- Deploy the new endpoints to the shared Cloudflare Workers environment.
-- Run end-to-end checks against the team's Google and Gemini credentials.
+- ~~Deploy the new endpoints to the shared Cloudflare Workers environment.~~ Done (2026-09-23).
+- ~~Run end-to-end checks against the team's Google and Gemini credentials.~~ Done on production (2026-09-23).
 - Verify Google Maps sharing on both Android and iOS.
-- Decide whether to archive the Kotlin Android UI.
+- ~~Decide whether to archive the Kotlin Android UI.~~ Archived: tag `kotlin-prototype`. `android/` is no longer updated.
 
 ## Run the Expo app
 
