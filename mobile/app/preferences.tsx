@@ -44,7 +44,7 @@ export default function PreferencesScreen() {
         </Pressable>
         <Text style={styles.routeLabel}>{route.preview?.origin.name} → {route.preview?.destination.name}</Text>
         <Text style={styles.title}>どんな移動に{`\n`}したい？</Text>
-        <Text style={styles.help}>複数選べます</Text>
+        <Text style={styles.help}>選ばなくてもOK・複数選べます</Text>
 
         <View style={styles.chips}>
           {chips.map((chip) => {
@@ -104,7 +104,7 @@ export default function PreferencesScreen() {
         </View>
 
         <View style={styles.footer}>
-          <PrimaryButton disabled={selected.length === 0 || (time.type === 'total_time' && Number(totalMinutes) < 1)} onPress={() => {
+          <PrimaryButton disabled={(time.type === 'total_time' && Number(totalMinutes) < 1)} onPress={() => {
             route.updatePreferences({
               preferences: selected,
               freeText,
@@ -112,7 +112,7 @@ export default function PreferencesScreen() {
             })
             router.push('/generating')
           }}>AIでルートを作る</PrimaryButton>
-          <Text style={styles.summary}>{selected.map((value) => chips.find((chip) => chip.value === value)?.label).join('・')}で探します</Text>
+          <Text style={styles.summary}>{selected.length === 0 ? 'おまかせ' : selected.map((value) => chips.find((chip) => chip.value === value)?.label).join('・')}で探します</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
