@@ -34,7 +34,8 @@ export default function GeneratingScreen() {
   const reviewInput = () => {
     const destination = error?.code === 'MAPS_URL_PARSE_FAILED' || error?.code === 'ROUTE_NOT_FOUND' || error?.code === 'LOCATION_UNAVAILABLE' ? '/' : '/preferences'
     clearError()
-    router.replace(destination)
+    // 置き換えると同じ画面が2枚重なるので、戻る先に残っている画面まで閉じる
+    router.dismissTo(destination)
   }
 
   return (

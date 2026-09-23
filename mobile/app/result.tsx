@@ -115,7 +115,7 @@ export default function ResultScreen() {
 
       <View style={[styles.footer, { paddingBottom: 14 + insets.bottom }]}>
         <PrimaryButton onPress={openNavigation}>Google Mapsで出発</PrimaryButton>
-        <Pressable accessibilityRole="button" onPress={() => router.replace('/preferences')}><Text style={styles.regenerate}>条件を変えてもう一度作る</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.dismissTo('/preferences')}><Text style={styles.regenerate}>条件を変えてもう一度作る</Text></Pressable>
       </View>
     </View>
   )
