@@ -126,7 +126,20 @@ test("editRoutePlan replaces a waypoint and excludes already shown candidates", 
 
 test("generateRoutePlan rejects invalid input with a structured error", async () => {
   await assert.rejects(
-    () => generateRoutePlan({ ...generateInput, preferences: [] }, dependencies()),
+    () => generateRoutePlan({ ...generateInput, preferences: ["unknown"] }, dependencies()),
     (error) => error instanceof RouteServiceError && error.code === "INVALID_REQUEST" && error.status === 400,
+  );
+});
+
+test("generateRoutePlan accepts empty preferences", async () => {
+  const result = await generateRoutePlan({ ...generateInput, preferences: [], freeText: "" }, dependencies());
+
+  assert.ok(result.waypoints.length > 0);
+});
+
+test("generateRoutePlan requires preferences to be an array", async () => {
+  await assert.rejects(
+    () => generateRoutePlan({ ...generateInput, preferences: undefined }, dependencies()),
+    (error) => error instanceof RouteServiceError && error.code === "INVALID_REQUEST",
   );
 });

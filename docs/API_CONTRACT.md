@@ -38,7 +38,7 @@ Google Mapsの共有URLはExpo側で解析し、このAPIには解析後の`orig
 |---|---|---:|---|
 | `origin` | string | yes | 場所名、住所、または`lat,lng` |
 | `destination` | string | yes | 場所名、住所、または`lat,lng` |
-| `preferences` | string[] | yes | 1件以上。許可値は下記参照 |
+| `preferences` | string[] | yes | 0件以上(空配列はおまかせ)。許可値は下記参照 |
 | `freeText` | string | yes | 未入力は空文字。最大500文字 |
 | `timeConstraint` | object | yes | 下記3形式のいずれか |
 | `waypointCount` | 1 or 2 | yes | 希望する経由地数 |

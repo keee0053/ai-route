@@ -300,9 +300,10 @@ function endpointValue(value) {
 }
 
 function validatePreferences(value) {
-  if (!Array.isArray(value) || value.length === 0) throw invalid("preferencesは1件以上必要です。");
-  const preferences = [...new Set(value.filter((item) => typeof item === "string"))];
-  if (preferences.length === 0 || preferences.some((item) => !PREFERENCES.has(item))) {
+  if (!Array.isArray(value)) throw invalid("preferencesは配列で指定してください。");
+  if (value.some((item) => typeof item !== "string")) throw invalid("preferencesに不正な値が含まれています。");
+  const preferences = [...new Set(value)];
+  if (preferences.some((item) => !PREFERENCES.has(item))) {
     throw invalid("preferencesに不正な値が含まれています。");
   }
   return preferences;
@@ -324,10 +325,12 @@ function maximumExtraMinutes(baseMinutes, constraint) {
 
 function requestText(request) {
   if (request.freeText) return request.freeText;
+  if (request.preferences.length === 0) return "ルート沿いのおすすめ";
   return request.preferences.join("・");
 }
 
 function defaultReason(preferences) {
+  if (preferences.length === 0) return "ルート沿いで評価が高い場所を選びました。";
   return `${preferences.join("・")}の希望に合う、ルート沿いの評価が高い場所を選びました。`;
 }
 
