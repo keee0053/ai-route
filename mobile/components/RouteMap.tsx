@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Image, StyleSheet, useWindowDimensions, View, type StyleProp, type ViewStyle } from 'react-native'
 import { API_URL } from '@/services/api'
 import type { RouteEndpoint } from '@/types/route'
@@ -18,14 +18,27 @@ type Props = {
  * ルートの本物の地図(サーバの GET /route-map が Google の静止画の地図を返す)。
  * API キーはサーバにあるので、端末は画像を受け取るだけ。取れなければ fallback を出す
  */
+const MAX_RETRIES = 2
+const RETRY_DELAY_MS = 3000
+
 export function RouteMap({ origin, destination, waypoints = [], height, style, fallback, children }: Props) {
   const { width } = useWindowDimensions()
-  const url = routeMapUrl(origin, destination, waypoints, width, height)
+  const baseUrl = routeMapUrl(origin, destination, waypoints, width, height)
+  // 取れなかったら少し待って読み直す(通信の揺れや、Google 側の一時的なエラー)。URL を変えないと画像のキャッシュに当たる
+  const [attempt, setAttempt] = useState({ baseUrl, count: 0 })
+  const tries = attempt.baseUrl === baseUrl ? attempt.count : 0
+  const url = tries === 0 ? baseUrl : `${baseUrl}&retry=${tries}`
   const [loaded, setLoaded] = useState<string | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
 
-  // fallback を出さない使い方(結果画面)では、取れなかったら場所ごと消す
-  if (fallback === null && failed === url) return null
+  useEffect(() => {
+    if (failed !== url || tries >= MAX_RETRIES) return
+    const timer = setTimeout(() => setAttempt({ baseUrl, count: tries + 1 }), RETRY_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [baseUrl, failed, tries, url])
+
+  // fallback を出さない使い方(結果画面)では、読み直しも尽きたら場所ごと消す
+  if (fallback === null && failed === url && tries >= MAX_RETRIES) return null
 
   return (
     <View style={[{ height, overflow: 'hidden' }, style]}>
