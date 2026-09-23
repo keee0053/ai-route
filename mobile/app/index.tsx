@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { router } from 'expo-router'
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import * as WebBrowser from 'expo-web-browser'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { PrimaryButton } from '@/components/PrimaryButton'
 import { colors, radius } from '@/constants/theme'
@@ -12,7 +11,6 @@ type ConnectionState = 'checking' | 'online' | 'offline'
 
 export default function SharedRouteScreen() {
   const [connection, setConnection] = useState<ConnectionState>('checking')
-  const [mapError, setMapError] = useState<string | null>(null)
   const { googleMapsUrl, preview, previewLoading, error, receiveSharedUrl } = useRoute()
 
   const checkConnection = useCallback(() => {
@@ -40,19 +38,6 @@ export default function SharedRouteScreen() {
     if (googleMapsUrl && !preview && !previewLoading && !error) void receiveSharedUrl(googleMapsUrl)
   }, [error, googleMapsUrl, preview, previewLoading, receiveSharedUrl])
 
-  const openSharedMap = async () => {
-    if (!googleMapsUrl) return
-    setMapError(null)
-    try {
-      await Linking.openURL(googleMapsUrl)
-    } catch {
-      try {
-        await WebBrowser.openBrowserAsync(googleMapsUrl)
-      } catch {
-        setMapError('Google Mapsを開けませんでした。時間をおいてもう一度お試しください。')
-      }
-    }
-  }
 
   const originName = preview?.origin.name ?? 'Google Mapsから共有してください'
   const destinationName = preview?.destination.name ?? (googleMapsUrl ? '目的地を読み込みます' : 'Googleマップで経路を出し「共有」からこのアプリを選ぶ')
@@ -120,11 +105,9 @@ export default function SharedRouteScreen() {
               ) : null}
             </View>
           ) : null}
-          {mapError ? <Text accessibilityRole="alert" style={styles.errorText}>{mapError}</Text> : null}
 
           <View style={styles.actions}>
             <PrimaryButton disabled={!preview} loading={previewLoading} onPress={() => router.push('/preferences')}>ルートをアレンジする</PrimaryButton>
-            <PrimaryButton disabled={!googleMapsUrl} variant="secondary" onPress={openSharedMap}>Google Mapsで開く</PrimaryButton>
           </View>
         </View>
       </ScrollView>
