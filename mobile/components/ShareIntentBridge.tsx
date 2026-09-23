@@ -15,6 +15,8 @@ export function ShareIntentBridge() {
     const sharedValue = extractUrl(shareIntent.text) ?? shareIntent.webUrl ?? shareIntent.text ?? ''
     void receiveSharedUrl(sharedValue).finally(() => {
       resetShareIntent()
+      // 前のルートの画面が戻る先に残らないように、積み重なった画面を全部閉じてから最初の画面へ
+      if (router.canDismiss()) router.dismissAll()
       router.replace('/')
     })
   }, [hasShareIntent, receiveSharedUrl, resetShareIntent, shareIntent.text, shareIntent.webUrl])
