@@ -1,3 +1,5 @@
+import { stayMinutesFor } from "./polyline.js";
+
 const PREFERENCES = new Set([
   "scenic",
   "ocean",
@@ -95,7 +97,7 @@ export async function editRoutePlan(input, deps) {
   const pool = survivors.length > 0 ? survivors : remaining;
   const eliminatedCount = remaining.length - pool.length;
 
-  const picked = await safePick(pool, requestText(request), deps.pick, { badTags });
+  const picked = await safePick(pool, requestText(request), deps.pick, { badTags, goodTags: request.action.goodTags });
   const ordered = picked.candidate
     ? [picked.candidate, ...pool.filter((candidate) => candidate.id !== picked.candidate.id)]
     : pool;
@@ -167,7 +169,8 @@ export function validateEditRequest(input) {
       excludedPlaceIds: Array.isArray(action.excludedPlaceIds)
         ? action.excludedPlaceIds.filter((id) => typeof id === "string").slice(0, 50)
         : [],
-      badTags: validateBadTags(action.badTags),
+      badTags: validateTags(action.badTags, "badTags"),
+      goodTags: validateTags(action.goodTags, "goodTags"),
     },
   };
 }
@@ -275,6 +278,9 @@ async function publicWaypoint(candidate, deps) {
     photoUrl: candidate.photoUrl ?? (candidate.photoName ? deps.photoUrl(candidate.photoName) : null),
     tags: Array.isArray(tags) ? tags.slice(0, 10) : [],
     detourMinutes: Math.max(0, Math.round(candidate.detourMinutes ?? 0)),
+    priceRange: candidate.priceRange ?? null,
+    stayMinutes: candidate.stayMinutes ?? stayMinutesFor(candidate.category ?? ""),
+    minutesToArrive: Number.isFinite(candidate.minutesToArrive) ? Math.round(candidate.minutesToArrive) : null,
   };
 }
 
@@ -296,10 +302,12 @@ function routeResponse({ origin, destination, normalRoute, recommendedRoute, way
 }
 
 function normalizedSummary(route) {
-  return {
+  const summary = {
     durationMinutes: Math.max(0, Math.round(route.durationMinutes ?? route.baseMinutes ?? 0)),
     distanceMeters: Math.max(0, Math.round(route.distanceMeters ?? (route.distanceKm ?? 0) * 1000)),
   };
+  if (Array.isArray(route.legMinutes) && route.legMinutes.every(Number.isFinite)) summary.legMinutes = route.legMinutes;
+  return summary;
 }
 
 function normalSummary(search) {
@@ -331,10 +339,10 @@ function validatePreferences(value) {
   return preferences;
 }
 
-function validateBadTags(value) {
+function validateTags(value, field) {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
-    throw invalid("action.badTagsは文字列の配列で指定してください。");
+    throw invalid(`action.${field}は文字列の配列で指定してください。`);
   }
   return [...new Set(value.map((item) => item.trim()).filter((item) => item !== "" && item.length <= 20))].slice(0, 10);
 }

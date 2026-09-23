@@ -14,6 +14,8 @@ export type RouteEndpoint = {
 export type RouteSummary = {
   durationMinutes: number
   distanceMeters: number
+  /** 区間ごとの所要時間(出発→経由地1→…→目的地)。無いこともある */
+  legMinutes?: number[]
 }
 
 export type RoutePreview = {
@@ -33,6 +35,11 @@ export type RouteWaypoint = {
   photoUrl: string | null
   tags: string[]
   detourMinutes: number
+  priceRange?: string | null
+  /** 種別から見積もった滞在時間 */
+  stayMinutes?: number
+  /** 出発地からその場所に着くまでの見積もり */
+  minutesToArrive?: number | null
 }
 
 export type GenerateRouteResponse = RoutePreview & {
@@ -56,7 +63,7 @@ export type GenerateRouteRequest = {
 
 export type EditRouteAction =
   | { type: 'delete'; waypointIndex: number }
-  | { type: 'replace'; waypointIndex: number; excludedPlaceIds: string[]; badTags?: string[] }
+  | { type: 'replace'; waypointIndex: number; excludedPlaceIds: string[]; badTags?: string[]; goodTags?: string[] }
 
 export type EditRouteRequest = {
   route: GenerateRouteResponse

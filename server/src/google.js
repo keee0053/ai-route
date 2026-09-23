@@ -46,7 +46,7 @@ export async function computeRoute(key, origin, destination, options = {}) {
     headers: {
       "X-Goog-Api-Key": key,
       "X-Goog-FieldMask":
-        "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline",
+        "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.duration",
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -69,6 +69,8 @@ export async function computeRoute(key, origin, destination, options = {}) {
   return {
     durationMinutes,
     distanceMeters,
+    // 区間ごとの所要時間(出発→経由地1→…→目的地)。アプリの到着時刻の表示に使う
+    legMinutes: (route.legs ?? []).map((leg) => Math.round(parseInt(leg.duration, 10) / 60)),
     // Legacy names used by POST /search and the Kotlin client.
     baseMinutes: durationMinutes,
     distanceKm: +(distanceMeters / 1000).toFixed(1),
