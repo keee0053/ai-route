@@ -95,3 +95,34 @@ export function stayMinutesFor(category) {
   for (const [re, min] of STAY_MINUTES) if (re.test(category)) return min;
   return 25;
 }
+
+/** 座標の配列を Google のエンコード済みポリラインにする(decodePolyline の逆) */
+export function encodePolyline(points) {
+  let lastLat = 0;
+  let lastLng = 0;
+  let out = "";
+  const encodeValue = (value) => {
+    let v = value < 0 ? ~(value << 1) : value << 1;
+    let chunk = "";
+    while (v >= 0x20) {
+      chunk += String.fromCharCode((0x20 | (v & 0x1f)) + 63);
+      v >>= 5;
+    }
+    return chunk + String.fromCharCode(v + 63);
+  };
+  for (const [lat, lng] of points) {
+    const iLat = Math.round(lat * 1e5);
+    const iLng = Math.round(lng * 1e5);
+    out += encodeValue(iLat - lastLat) + encodeValue(iLng - lastLng);
+    lastLat = iLat;
+    lastLng = iLng;
+  }
+  return out;
+}
+
+/** 点を間引いて最大 max 点にする(始点と終点は残す)。静止画の地図の URL 長の上限対策 */
+export function thinPoints(points, max) {
+  if (points.length <= max) return points;
+  const step = (points.length - 1) / (max - 1);
+  return Array.from({ length: max }, (_, i) => points[Math.round(i * step)]);
+}

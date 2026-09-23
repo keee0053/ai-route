@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { PrimaryButton } from '@/components/PrimaryButton'
+import { RouteMap } from '@/components/RouteMap'
 import { arrivalTimes, formatClock, formatDuration, waypointSummary } from '@/components/waypoint-format'
 import { colors, radius } from '@/constants/theme'
 import { useRoute } from '@/context/RouteContext'
@@ -107,6 +108,16 @@ export default function ResultScreen() {
             <TimelineRow kind="end" title={route.destination.name} time={times ? formatClock(times.destination) : null} last />
           </View>
 
+          {/* 経由地込みの経路を本物の地図で。取れなければ出さない */}
+          <RouteMap
+            origin={route.origin}
+            destination={route.destination}
+            waypoints={route.waypoints}
+            height={200}
+            style={styles.mapCard}
+            fallback={null}
+          />
+
           {route.reason ? (
             <View style={styles.reasonCard}><Text style={styles.reasonLabel}>AIコメント</Text><Text style={styles.reason}>{route.reason}</Text></View>
           ) : null}
@@ -200,6 +211,7 @@ const styles = StyleSheet.create({
   rowEndpoint: { color: colors.ink, fontSize: 14, fontWeight: '700' },
   rowSubtitle: { color: colors.muted, fontSize: 11, marginTop: 1 },
   time: { color: colors.ink, fontSize: 13, fontWeight: '700' },
+  mapCard: { borderRadius: radius.large, backgroundColor: '#F1F5F9' },
   reasonCard: { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD', borderWidth: 1, borderRadius: radius.large, padding: 14, gap: 5 },
   reasonLabel: { color: colors.brand, fontSize: 12, fontWeight: '800' },
   reason: { color: '#475569', fontSize: 13, lineHeight: 20 },

@@ -3,6 +3,7 @@ import { pickNext, tagWithJev } from "./jev.js";
 import { generateTags, fallbackTags } from "./gemini.js";
 import { editRoutePlan, generateRoutePlan, RouteServiceError } from "./route-service.js";
 import { parseShareText } from "./share-link.js";
+import { clampSize, staticMapUrl } from "./route-map.js";
 
 // 経由地のタグ。Gemini のキャッシュがあればそれを使う。無ければこの時間だけ待ち、
 // 間に合わなければ Jev のタグ(0.3秒)で返す。Gemini の生成は裏で続けてキャッシュする
@@ -38,6 +39,7 @@ export default {
               "POST /tag",
               "POST /next",
               "GET /photo",
+              "GET /route-map",
             ],
           });
 
@@ -61,6 +63,9 @@ export default {
 
         case "GET /photo":
           return await handlePhoto(url, env);
+
+        case "GET /route-map":
+          return await handleRouteMap(request, url, env, ctx);
 
         default:
           return fail("not found", 404);
@@ -258,6 +263,48 @@ async function handlePhoto(url, env) {
   if (!upstream.ok) return fail(`photo ${upstream.status}`, upstream.status);
   const response = new Response(upstream.body, upstream);
   response.headers.set("Cache-Control", "public, max-age=86400");
+  return response;
+}
+
+/**
+ * ルートの地図(静止画)。GET /route-map?origin=..&destination=..&waypoints=lat,lng|lat,lng&w=390&h=300
+ * 経由地があれば経由地込みの経路を引き直す。画像はURLごとにキャッシュする
+ */
+async function handleRouteMap(request, url, env, ctx) {
+  const cache = caches.default;
+  const cacheKey = new Request(url.toString(), request);
+  const hit = await cache.match(cacheKey);
+  if (hit) return hit;
+
+  const origin = url.searchParams.get("origin");
+  const destination = url.searchParams.get("destination");
+  if (!origin || !destination) return fail("origin と destination が必要です", 400);
+  const waypoints = (url.searchParams.get("waypoints") ?? "")
+    .split("|")
+    .map((pair) => pair.split(",").map(Number))
+    .filter((pair) => pair.length === 2 && pair.every(Number.isFinite))
+    .slice(0, 5);
+
+  const route = await computeRoute(env.GOOGLE_MAPS_SERVER_KEY, origin, destination, {
+    intermediates: waypoints.map(([lat, lng]) => `${lat},${lng}`),
+  });
+  const image = await fetch(staticMapUrl(env.GOOGLE_MAPS_SERVER_KEY, {
+    polyline: route.polyline,
+    waypoints,
+    width: clampSize(url.searchParams.get("w"), 390),
+    height: clampSize(url.searchParams.get("h"), 300),
+  }));
+  if (!image.ok) {
+    // Static Maps API が有効になっていないと 403。アプリは飾りの地図に戻す
+    return apiFail("UPSTREAM_ERROR", `地図を取得できませんでした (${image.status})`, 502);
+  }
+  const response = new Response(image.body, {
+    headers: {
+      "Content-Type": image.headers.get("Content-Type") ?? "image/png",
+      "Cache-Control": "public, max-age=86400",
+    },
+  });
+  ctx.waitUntil(cache.put(cacheKey, response.clone()));
   return response;
 }
 
