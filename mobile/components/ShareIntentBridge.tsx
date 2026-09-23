@@ -11,13 +11,11 @@ export function ShareIntentBridge() {
 
   useEffect(() => {
     if (!hasShareIntent) return
-    const url = shareIntent.webUrl ?? extractUrl(shareIntent.text)
-    if (url) {
-      void receiveSharedUrl(url).finally(() => {
-        resetShareIntent()
-        router.replace('/')
-      })
-    }
+    const sharedValue = shareIntent.webUrl ?? extractUrl(shareIntent.text) ?? shareIntent.text ?? ''
+    void receiveSharedUrl(sharedValue).finally(() => {
+      resetShareIntent()
+      router.replace('/')
+    })
   }, [hasShareIntent, receiveSharedUrl, resetShareIntent, shareIntent.text, shareIntent.webUrl])
 
   return null

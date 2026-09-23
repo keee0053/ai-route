@@ -10,10 +10,12 @@ const steps = ['希望を分析中', 'ルート周辺を検索中', '寄り道�
 
 export default function GeneratingScreen() {
   const [activeStep, setActiveStep] = useState(0)
-  const { createRoute, error, clearError } = useRoute()
+  const [attempt, setAttempt] = useState(0)
+  const { createRoute, error, clearError, routeLoading } = useRoute()
 
   useEffect(() => {
     let mounted = true
+    setActiveStep(0)
     const timer = setInterval(() => setActiveStep((current) => Math.min(current + 1, steps.length - 1)), 900)
     void createRoute().then((success) => {
       if (mounted && success) router.replace('/result')
@@ -22,7 +24,18 @@ export default function GeneratingScreen() {
       mounted = false
       clearInterval(timer)
     }
-  }, [createRoute])
+  }, [attempt, createRoute])
+
+  const retry = () => {
+    clearError()
+    setAttempt((current) => current + 1)
+  }
+
+  const reviewInput = () => {
+    const destination = error?.code === 'MAPS_URL_PARSE_FAILED' || error?.code === 'ROUTE_NOT_FOUND' ? '/' : '/preferences'
+    clearError()
+    router.replace(destination)
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -33,19 +46,24 @@ export default function GeneratingScreen() {
         {[0, 1, 2].map((item) => <View key={item} style={[styles.searchDot, { top: 175 + item * 95, left: 90 + item * 52 }]} />)}
       </View>
       <View style={styles.panel}>
-        <Text style={styles.title}>あなた向けのルートを{`\n`}作っています</Text>
-        <View style={styles.steps}>
-          {steps.map((step, index) => (
-            <View key={step} style={styles.stepRow}>
-              <View style={[styles.stepDot, index <= activeStep && styles.activeDot]} />
-              <Text style={[styles.stepText, index <= activeStep && styles.activeText]}>{step}</Text>
-            </View>
-          ))}
-        </View>
+        <Text style={styles.title}>{error ? 'ルートを作れませんでした' : 'あなた向けのルートを\n作っています'}</Text>
+        {!error ? (
+          <View style={styles.steps}>
+            {steps.map((step, index) => (
+              <View key={step} style={styles.stepRow}>
+                <View style={[styles.stepDot, index <= activeStep && styles.activeDot]} />
+                <Text style={[styles.stepText, index <= activeStep && styles.activeText]}>{step}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
         {error ? (
           <View style={styles.errorPanel}>
-            <Text accessibilityRole="alert" style={styles.errorText}>{error}</Text>
-            <PrimaryButton onPress={() => { clearError(); router.replace('/preferences') }}>条件を見直す</PrimaryButton>
+            <Text accessibilityRole="alert" style={styles.errorText}>{error.message}</Text>
+            {error.retryable ? <PrimaryButton loading={routeLoading} onPress={retry}>もう一度試す</PrimaryButton> : null}
+            <PrimaryButton variant={error.retryable ? 'secondary' : 'primary'} onPress={reviewInput}>
+              {error.code === 'MAPS_URL_PARSE_FAILED' || error.code === 'ROUTE_NOT_FOUND' ? '共有ルートに戻る' : '条件を見直す'}
+            </PrimaryButton>
           </View>
         ) : null}
       </View>

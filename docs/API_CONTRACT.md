@@ -140,6 +140,18 @@ TypeScript上の正本は`mobile/types/route.ts`の`GenerateRouteRequest`と
 
 メッセージは画面表示用の日本語、コードはフロントの分岐用とする。
 
+Expo側でのみ発生するエラーは次のコードで管理する。
+
+| Code | Meaning | Retry |
+|---|---|---:|
+| `NETWORK_ERROR` | インターネットまたはサーバーへ接続できない | yes |
+| `TIMEOUT` | 20秒以内にAPIから応答がない | yes |
+| `MAPS_URL_PARSE_FAILED` | Google Mapsの共有URLから出発地・目的地を取得できない | no |
+| `INVALID_RESPONSE` | APIの応答がJSONでない、または読み取れない | yes |
+
+再試行可能なエラーでは同じ入力を保持したまま「もう一度試す」を表示する。
+`NO_CANDIDATES`など条件変更が必要なエラーでは「条件を見直す」を表示する。
+
 ## Existing endpoints
 
 `POST /search`、`POST /tag`、`POST /next`、`GET /photo`は既存アプリとの互換性のため

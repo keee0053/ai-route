@@ -3,6 +3,7 @@ import type {
   GenerateRouteRequest,
   GenerateRouteResponse,
   Preference,
+  RouteApiErrorCode,
   RoutePreview,
   TimeConstraint,
 } from '@/types/route'
@@ -36,16 +37,32 @@ type NextResponse = { id?: string | null; reason?: string | null }
 type TagResponse = { tags?: string[] }
 
 export type HealthResponse = { ok: true }
+export type ApiErrorCode = RouteApiErrorCode
+  | 'NETWORK_ERROR'
+  | 'TIMEOUT'
+  | 'MAPS_URL_PARSE_FAILED'
+  | 'INVALID_RESPONSE'
 
 export class ApiError extends Error {
-  constructor(message: string, public readonly code = 'NETWORK_ERROR') {
+  constructor(
+    message: string,
+    public readonly code: ApiErrorCode = 'NETWORK_ERROR',
+    public readonly retryable = false,
+  ) {
     super(message)
+    this.name = 'ApiError'
   }
 }
 
 export async function getHealth(signal?: AbortSignal): Promise<HealthResponse> {
-  const response = await fetch(API_URL + '/', { signal })
-  if (!response.ok) throw new ApiError('バックエンドへ接続できませんでした。')
+  let response: Response
+  try {
+    response = await fetch(API_URL + '/', { signal })
+  } catch (caught) {
+    if (isAbortError(caught)) throw new ApiError('接続確認がタイムアウトしました。', 'TIMEOUT', true)
+    throw new ApiError('バックエンドへ接続できませんでした。', 'NETWORK_ERROR', true)
+  }
+  if (!response.ok) throw new ApiError('バックエンドへ接続できませんでした。', 'UPSTREAM_ERROR', true)
   return { ok: true }
 }
 
@@ -163,40 +180,52 @@ async function fetchTags(candidate: BackendCandidate): Promise<string[]> {
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
-  let response: Response
-  try {
-    response = await fetch(API_URL + path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-  } catch {
-    throw new ApiError('通信できませんでした。接続を確認してください。')
-  }
+  const response = await fetchWithTimeout(API_URL + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
 
-  const payload = await response.json() as T & ApiErrorBody
+  let payload: T & ApiErrorBody
+  try {
+    payload = await response.json() as T & ApiErrorBody
+  } catch {
+    throw new ApiError('サーバーからの応答を読み取れませんでした。', 'INVALID_RESPONSE', true)
+  }
   if (!response.ok) {
     const message = typeof payload.error === 'string' ? payload.error : payload.error?.message
-    throw new ApiError(message ?? 'バックエンドでエラーが発生しました。')
+    const code = normalizeErrorCode(typeof payload.error === 'object' ? payload.error?.code : undefined, response.status)
+    throw new ApiError(message ?? messageForStatus(response.status), code, isRetryable(code, response.status))
   }
   return payload
 }
 
 async function parseSharedRoute(sharedText: string): Promise<ParsedRoute> {
   const extracted = sharedText.match(/https?:\/\/\S+/)?.[0] ?? sharedText.trim()
-  let resolved = extracted
+  if (!extracted) {
+    throw new ApiError('Google Mapsで出発地と目的地を設定し、ルートを共有してください。', 'MAPS_URL_PARSE_FAILED')
+  }
 
+  let url: URL
   try {
-    const url = new URL(extracted)
-    if (url.hostname === 'maps.app.goo.gl' || url.hostname === 'goo.gl') {
-      const response = await fetch(extracted, { method: 'GET' })
-      resolved = response.url || extracted
-    }
+    url = new URL(extracted)
   } catch {
     throw new ApiError('Google Mapsの共有URLを確認してください。', 'MAPS_URL_PARSE_FAILED')
   }
 
-  const url = new URL(resolved)
+  if (!isGoogleMapsHost(url.hostname)) {
+    throw new ApiError('Google MapsのルートURLを共有してください。', 'MAPS_URL_PARSE_FAILED')
+  }
+
+  if (url.hostname === 'maps.app.goo.gl' || url.hostname === 'goo.gl') {
+    const response = await fetchWithTimeout(extracted, { method: 'GET' }, 10000)
+    try {
+      url = new URL(response.url || extracted)
+    } catch {
+      throw new ApiError('Google Mapsの短縮URLを読み取れませんでした。', 'MAPS_URL_PARSE_FAILED')
+    }
+  }
+
   const queryOrigin = url.searchParams.get('origin')
   const queryDestination = url.searchParams.get('destination')
   if (queryOrigin && queryDestination) {
@@ -215,6 +244,57 @@ async function parseSharedRoute(sharedText: string): Promise<ParsedRoute> {
     return { origin: places[0]!, destination: places.at(-1)! }
   }
   throw new ApiError('出発地と目的地を含むGoogle Mapsのルートを共有してください。', 'MAPS_URL_PARSE_FAILED')
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 20000) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch (caught) {
+    if (controller.signal.aborted || isAbortError(caught)) {
+      throw new ApiError('通信がタイムアウトしました。時間をおいてもう一度お試しください。', 'TIMEOUT', true)
+    }
+    throw new ApiError('通信できませんでした。インターネット接続を確認してください。', 'NETWORK_ERROR', true)
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+function isGoogleMapsHost(hostname: string) {
+  return hostname === 'goo.gl'
+    || hostname === 'maps.app.goo.gl'
+    || hostname === 'google.com'
+    || hostname.endsWith('.google.com')
+}
+
+function isAbortError(caught: unknown) {
+  return caught instanceof Error && caught.name === 'AbortError'
+}
+
+function normalizeErrorCode(code: string | undefined, status: number): ApiErrorCode {
+  const knownCodes: ApiErrorCode[] = [
+    'INVALID_REQUEST',
+    'ROUTE_NOT_FOUND',
+    'NO_CANDIDATES',
+    'UPSTREAM_ERROR',
+    'INTERNAL_ERROR',
+  ]
+  if (code && knownCodes.includes(code as ApiErrorCode)) return code as ApiErrorCode
+  if (status === 400) return 'INVALID_REQUEST'
+  if (status === 404) return 'ROUTE_NOT_FOUND'
+  if (status >= 500) return 'UPSTREAM_ERROR'
+  return 'INTERNAL_ERROR'
+}
+
+function isRetryable(code: ApiErrorCode, status: number) {
+  return code === 'UPSTREAM_ERROR' || code === 'INTERNAL_ERROR' || status === 408 || status === 429 || status >= 500
+}
+
+function messageForStatus(status: number) {
+  if (status === 429) return 'サービスが混み合っています。時間をおいてもう一度お試しください。'
+  if (status >= 500) return 'サーバーで問題が発生しました。時間をおいてもう一度お試しください。'
+  return 'ルートを作成できませんでした。'
 }
 
 function cleanPlace(value: string) {

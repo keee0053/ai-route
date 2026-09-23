@@ -62,6 +62,7 @@ export default function PreferencesScreen() {
           <TextInput
             multiline
             numberOfLines={4}
+            maxLength={500}
             value={freeText}
             onChangeText={setFreeText}
             placeholder="例：海沿いを走って、途中で景色のいいカフェに寄りたい"

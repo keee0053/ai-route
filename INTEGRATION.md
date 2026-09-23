@@ -16,6 +16,8 @@ route-generation endpoint are documented in `docs/API_CONTRACT.md`.
 6. Load tags and photos through POST /tag and GET /photo.
 7. Show the candidates in the Expo result UI.
 8. Open Google Maps with the selected candidates as waypoints.
+9. Preserve input and offer the appropriate retry or review action when route
+   loading fails.
 
 The default API origin is:
 

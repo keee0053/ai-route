@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { router } from 'expo-router'
-import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import * as WebBrowser from 'expo-web-browser'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { PrimaryButton } from '@/components/PrimaryButton'
@@ -12,9 +12,11 @@ type ConnectionState = 'checking' | 'online' | 'offline'
 
 export default function SharedRouteScreen() {
   const [connection, setConnection] = useState<ConnectionState>('checking')
+  const [mapError, setMapError] = useState<string | null>(null)
   const { googleMapsUrl, preview, previewLoading, error, receiveSharedUrl } = useRoute()
 
-  useEffect(() => {
+  const checkConnection = useCallback(() => {
+    setConnection('checking')
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 3000)
     getHealth(controller.signal)
@@ -28,15 +30,27 @@ export default function SharedRouteScreen() {
   }, [])
 
   useEffect(() => {
+    const cancel = checkConnection()
+    return () => {
+      cancel()
+    }
+  }, [checkConnection])
+
+  useEffect(() => {
     if (googleMapsUrl && !preview && !previewLoading && !error) void receiveSharedUrl(googleMapsUrl)
   }, [error, googleMapsUrl, preview, previewLoading, receiveSharedUrl])
 
   const openSharedMap = async () => {
     if (!googleMapsUrl) return
+    setMapError(null)
     try {
       await Linking.openURL(googleMapsUrl)
     } catch {
-      await WebBrowser.openBrowserAsync(googleMapsUrl)
+      try {
+        await WebBrowser.openBrowserAsync(googleMapsUrl)
+      } catch {
+        setMapError('Google Mapsを開けませんでした。時間をおいてもう一度お試しください。')
+      }
     }
   }
 
@@ -58,7 +72,9 @@ export default function SharedRouteScreen() {
             <View style={styles.badgeIcon}><Text style={styles.badgeIconText}>G</Text></View>
             <View>
               <Text style={styles.badgeEyebrow}>Google Mapsから共有</Text>
-              <Text style={styles.badgeTitle}>ルートを受け取りました</Text>
+              <Text style={styles.badgeTitle}>
+                {previewLoading ? 'ルートを確認中' : preview ? 'ルートを受け取りました' : error ? 'ルートを確認できません' : 'ルートを共有してください'}
+              </Text>
             </View>
           </View>
         </View>
@@ -93,9 +109,18 @@ export default function SharedRouteScreen() {
             <Text style={styles.connectionText}>
               {connection === 'online' ? 'サービスに接続済み' : connection === 'offline' ? 'オフライン。Mock画面は確認できます' : '接続を確認中'}
             </Text>
+            {connection === 'offline' ? <Pressable accessibilityRole="button" onPress={checkConnection}><Text style={styles.retryLink}>再接続</Text></Pressable> : null}
           </View>
 
-          {error ? <Text accessibilityRole="alert" style={styles.errorText}>{error}</Text> : null}
+          {error ? (
+            <View style={styles.errorBlock}>
+              <Text accessibilityRole="alert" style={styles.errorText}>{error.message}</Text>
+              {error.retryable && googleMapsUrl ? (
+                <PrimaryButton variant="secondary" loading={previewLoading} onPress={() => void receiveSharedUrl(googleMapsUrl)}>もう一度読み込む</PrimaryButton>
+              ) : null}
+            </View>
+          ) : null}
+          {mapError ? <Text accessibilityRole="alert" style={styles.errorText}>{mapError}</Text> : null}
 
           <View style={styles.actions}>
             <PrimaryButton disabled={!preview} loading={previewLoading} onPress={() => router.push('/preferences')}>ルートをアレンジする</PrimaryButton>
@@ -145,6 +170,8 @@ const styles = StyleSheet.create({
   offline: { backgroundColor: colors.danger },
   checking: { backgroundColor: colors.faint },
   connectionText: { color: colors.muted, fontSize: 12 },
+  retryLink: { color: colors.brandDark, fontSize: 12, fontWeight: '700', paddingVertical: 6, paddingHorizontal: 4 },
+  errorBlock: { gap: 10 },
   errorText: { color: colors.danger, fontSize: 13, lineHeight: 19 },
   actions: { gap: 10, marginTop: 'auto' },
 })
