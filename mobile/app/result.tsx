@@ -201,7 +201,7 @@ const styles = StyleSheet.create({
   rail: { width: 26, alignItems: 'center', alignSelf: 'stretch' },
   railLine: { flex: 1, width: 2, backgroundColor: '#CBD5E1' },
   railHidden: { backgroundColor: 'transparent' },
-  endpoint: { width: 13, height: 13, borderRadius: 7, borderWidth: 3, borderColor: colors.ink, backgroundColor: colors.white },
+  endpoint: { width: 13, height: 13, borderRadius: 7, borderWidth: 3, borderColor: colors.brand, backgroundColor: colors.white },
   endpointEnd: { borderColor: colors.destination },
   number: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
   numberText: { color: colors.white, fontSize: 13, fontWeight: '800' },
