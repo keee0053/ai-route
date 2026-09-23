@@ -17,6 +17,7 @@ type RouteState = {
   receiveSharedUrl: (url: string) => Promise<boolean>
   updatePreferences: (value: { preferences: Preference[]; freeText: string; timeConstraint: TimeConstraint }) => void
   createRoute: () => Promise<boolean>
+  updateResult: (value: GenerateRouteResponse) => void
   clearError: () => void
 }
 
@@ -77,6 +78,7 @@ export function RouteProvider({ children }: PropsWithChildren) {
   }, [freeText, googleMapsUrl, preferences, timeConstraint])
 
   const clearError = useCallback(() => setError(null), [])
+  const updateResult = useCallback((value: GenerateRouteResponse) => setResult(value), [])
 
   const value = useMemo<RouteState>(() => ({
     googleMapsUrl,
@@ -91,8 +93,9 @@ export function RouteProvider({ children }: PropsWithChildren) {
     receiveSharedUrl,
     updatePreferences,
     createRoute,
+    updateResult,
     clearError,
-  }), [clearError, createRoute, error, freeText, googleMapsUrl, preferences, preview, previewLoading, receiveSharedUrl, result, routeLoading, timeConstraint, updatePreferences])
+  }), [clearError, createRoute, error, freeText, googleMapsUrl, preferences, preview, previewLoading, receiveSharedUrl, result, routeLoading, timeConstraint, updatePreferences, updateResult])
 
   return <RouteContext.Provider value={value}>{children}</RouteContext.Provider>
 }

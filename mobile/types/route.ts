@@ -52,6 +52,18 @@ export type GenerateRouteRequest = {
   waypointCount: 1 | 2
 }
 
+export type EditRouteAction =
+  | { type: 'delete'; waypointIndex: number }
+  | { type: 'replace'; waypointIndex: number; excludedPlaceIds: string[] }
+
+export type EditRouteRequest = {
+  route: GenerateRouteResponse
+  preferences: Preference[]
+  freeText: string
+  timeConstraint: TimeConstraint
+  action: EditRouteAction
+}
+
 export type RouteApiErrorCode =
   | 'INVALID_REQUEST'
   | 'ROUTE_NOT_FOUND'

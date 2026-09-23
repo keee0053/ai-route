@@ -8,17 +8,18 @@ Cloudflare Workers。**APIキーは全部ここにある。アプリ側には1�
 
 | | 内容 |
 |---|---|
+| `POST /generate-route` | 希望条件から経由地を選び、正確なルートを生成 |
+| `POST /edit-route` | 経由地の変更・削除後にルートを再計算 |
 | `POST /search` | `{origin, destination, genre?}` → ルートと沿線の候補 |
 | `POST /tag` | `{candidate}` → その場所のタグを Gemini が10個生成 |
 | `POST /next` | `{candidates, request?, badTags?, goodTags?, notes?}` → 次の1件を Jev が選ぶ |
 | `GET /photo?name=places/...` | Places の写真を中継(キーを端末に出さないため) |
 
-## 実装予定の統合API
+## Expo向け統合API
 
-Expo版が使う`POST /generate-route`の入力、出力、単位、エラー形式は
-[`docs/API_CONTRACT.md`](../docs/API_CONTRACT.md)を正式仕様とする。実装時は既存の`/search`、
-`/tag`、`/next`をサーバー内で組み合わせ、経由地込みの正確なRoutes APIの
-再計算結果を返す。
+`POST /generate-route`と`POST /edit-route`の入力、出力、単位、エラー形式は
+[`docs/API_CONTRACT.md`](../docs/API_CONTRACT.md)を正式仕様とする。候補検索・選定・タグ生成と、
+経由地込みのRoutes API再計算をサーバー内でまとめて行う。
 
 ## 使っているAPI
 

@@ -1,11 +1,10 @@
 import type {
+  EditRouteRequest,
   GenerateRouteInput,
   GenerateRouteRequest,
   GenerateRouteResponse,
-  Preference,
   RouteApiErrorCode,
   RoutePreview,
-  TimeConstraint,
 } from '@/types/route'
 
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://ekz-server.prizmprograms.workers.dev'
@@ -13,28 +12,10 @@ export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://ekz-server.pr
 type ApiErrorBody = { error?: string | { code?: string; message?: string } }
 type ParsedRoute = { origin: string; destination: string }
 
-type BackendCandidate = {
-  id: string
-  name: string
-  category?: string
-  lat?: number
-  lng?: number
-  rating?: number | null
-  reviewCount?: number | null
-  photoName?: string | null
-  detourMinutes?: number
-  routeRatio?: number
-  offRouteKm?: number
-}
-
 type SearchResponse = {
   baseMinutes: number
   distanceKm: number
-  candidates: BackendCandidate[]
 }
-
-type NextResponse = { id?: string | null; reason?: string | null }
-type TagResponse = { tags?: string[] }
 
 export type HealthResponse = { ok: true }
 export type ApiErrorCode = RouteApiErrorCode
@@ -89,94 +70,15 @@ export async function generateRoute(input: GenerateRouteInput): Promise<Generate
     timeConstraint: input.timeConstraint,
     waypointCount: 2,
   }
-  const search = await searchCandidates(request.origin, request.destination, genreFor(request.preferences))
-  const pool = filterCandidates(search.candidates, search.baseMinutes, request.timeConstraint)
-
-  if (pool.length === 0) {
-    throw new ApiError('条件に合う寄り道候補が見つかりませんでした。', 'NO_CANDIDATES')
-  }
-
-  const desiredCount = Math.min(request.waypointCount, pool.length)
-  const selected: BackendCandidate[] = []
-  const reasons: string[] = []
-  let remaining = pool
-  const maxExtraMinutes = extraAllowance(search.baseMinutes, request.timeConstraint)
-  let usedExtraMinutes = 0
-
-  for (let index = 0; index < desiredCount; index += 1) {
-    const available = remaining.filter((item) => (item.detourMinutes ?? 0) <= maxExtraMinutes - usedExtraMinutes)
-    if (available.length === 0) break
-    const pick = await pickCandidate(available, request.freeText, request.preferences)
-    const candidate = available.find((item) => item.id === pick.id) ?? available[0]
-    if (!candidate) break
-    selected.push(candidate)
-    usedExtraMinutes += candidate.detourMinutes ?? 0
-    if (pick.reason) reasons.push(pick.reason)
-    remaining = remaining.filter((item) => item.id !== candidate.id)
-  }
-
-  selected.sort((a, b) => (a.routeRatio ?? 0) - (b.routeRatio ?? 0))
-  const tags = await Promise.all(selected.map((candidate) => fetchTags(candidate)))
-  const extraMinutes = selected.reduce((total, candidate) => total + (candidate.detourMinutes ?? 0), 0)
-  const distanceMeters = Math.round(
-    search.distanceKm * 1000 + selected.reduce((total, candidate) => total + (candidate.offRouteKm ?? 0) * 2000, 0),
-  )
-
-  const waypoints = selected.map((candidate, index) => ({
-    placeId: candidate.id,
-    name: candidate.name,
-    lat: candidate.lat ?? 0,
-    lng: candidate.lng ?? 0,
-    category: candidate.category || null,
-    rating: candidate.rating ?? null,
-    reviewCount: candidate.reviewCount ?? null,
-    photoUrl: candidate.photoName
-      ? API_URL + '/photo?name=' + encodeURIComponent(candidate.photoName) + '&maxWidthPx=1200'
-      : null,
-    tags: tags[index] ?? [],
-    detourMinutes: candidate.detourMinutes ?? 0,
-  }))
-
-  return {
-    origin: endpoint(route.origin),
-    destination: endpoint(route.destination),
-    normalRoute: {
-      durationMinutes: search.baseMinutes,
-      distanceMeters: Math.round(search.distanceKm * 1000),
-    },
-    recommendedRoute: {
-      durationMinutes: search.baseMinutes + extraMinutes,
-      distanceMeters,
-      extraMinutes,
-    },
-    waypoints,
-    reason: reasons[0] ?? preferenceText(request.preferences) + 'に合う、ルート沿いの評価が高い場所を選びました。',
-    googleMapsUrl: buildMapsUrl(route, selected),
-  }
+  return postJson<GenerateRouteResponse>('/generate-route', request)
 }
 
-async function searchCandidates(origin: string, destination: string, genre?: string): Promise<SearchResponse> {
-  return postJson<SearchResponse>('/search', { origin, destination, genre })
+export async function editRoute(input: EditRouteRequest): Promise<GenerateRouteResponse> {
+  return postJson<GenerateRouteResponse>('/edit-route', input)
 }
 
-async function pickCandidate(candidates: BackendCandidate[], request: string, preferences: Preference[]) {
-  try {
-    return await postJson<NextResponse>('/next', {
-      candidates: candidates.slice(0, 30),
-      request: request || preferenceText(preferences),
-    })
-  } catch {
-    return { id: candidates[0]?.id, reason: null }
-  }
-}
-
-async function fetchTags(candidate: BackendCandidate): Promise<string[]> {
-  try {
-    const response = await postJson<TagResponse>('/tag', { candidate })
-    return response.tags?.slice(0, 4) ?? []
-  } catch {
-    return candidate.category ? [candidate.category] : []
-  }
+async function searchCandidates(origin: string, destination: string): Promise<SearchResponse> {
+  return postJson<SearchResponse>('/search', { origin, destination })
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
@@ -312,65 +214,4 @@ function endpoint(value: string) {
     lat: Number.isFinite(lat) ? lat : null,
     lng: Number.isFinite(lng) ? lng : null,
   }
-}
-
-function filterCandidates(candidates: BackendCandidate[], baseMinutes: number, constraint: TimeConstraint) {
-  const allowedExtra = extraAllowance(baseMinutes, constraint)
-
-  return candidates
-    .filter((candidate) => {
-      const ratio = candidate.routeRatio ?? 0.5
-      return ratio >= 0.08
-        && ratio <= 0.96
-        && (candidate.offRouteKm ?? 0) <= 6
-        && (candidate.detourMinutes ?? 0) <= allowedExtra
-    })
-    .sort((a, b) => {
-      const rating = (b.rating ?? 0) - (a.rating ?? 0)
-      return rating !== 0 ? rating : (a.detourMinutes ?? 0) - (b.detourMinutes ?? 0)
-    })
-}
-
-function extraAllowance(baseMinutes: number, constraint: TimeConstraint) {
-  if (constraint.type === 'none') return 60
-  if (constraint.type === 'extra_time') return constraint.minutes
-  return Math.max(0, constraint.minutes - baseMinutes)
-}
-
-function genreFor(preferences: Preference[]) {
-  if (preferences.includes('cafe')) return 'sweets'
-  if (preferences.includes('gourmet')) return 'meal'
-  if (preferences.some((item) => ['scenic', 'ocean', 'night_view', 'mountain'].includes(item))) return 'view'
-  if (preferences.some((item) => item === 'hot_spring' || item === 'quiet')) return 'rest'
-  return undefined
-}
-
-function preferenceText(preferences: Preference[]) {
-  const labels: Record<Preference, string> = {
-    scenic: '景色',
-    ocean: '海沿い',
-    night_view: '夜景',
-    mountain: '山道',
-    cafe: 'カフェ',
-    gourmet: 'グルメ',
-    hot_spring: '温泉',
-    detour: '寄り道',
-    quiet: '静かな場所',
-  }
-  return preferences.map((item) => labels[item]).join('・') || 'おまかせ'
-}
-
-function buildMapsUrl(route: ParsedRoute, candidates: BackendCandidate[]) {
-  const params = new URLSearchParams({
-    api: '1',
-    travelmode: 'driving',
-    origin: route.origin,
-    destination: route.destination,
-  })
-  if (candidates.length) {
-    params.set('waypoints', candidates.map((candidate) =>
-      candidate.lat != null && candidate.lng != null ? candidate.lat + ',' + candidate.lng : candidate.name,
-    ).join('|'))
-  }
-  return 'https://www.google.com/maps/dir/?' + params.toString()
 }

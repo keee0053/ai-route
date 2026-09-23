@@ -117,6 +117,48 @@ scenic, ocean, night_view, mountain, cafe, gourmet, hot_spring, detour, quiet
 TypeScript上の正本は`mobile/types/route.ts`の`GenerateRouteRequest`と
 `GenerateRouteResponse`とする。
 
+## POST /edit-route
+
+生成済みルートの経由地を変更または削除し、Routes APIで所要時間と距離を再計算する。
+レスポンスは`POST /generate-route`と同じ`GenerateRouteResponse`。
+
+### Replace request
+
+```json
+{
+  "route": { "...": "POST /generate-routeのレスポンス全体" },
+  "preferences": ["ocean", "cafe"],
+  "freeText": "海沿いのカフェ",
+  "timeConstraint": { "type": "extra_time", "minutes": 30 },
+  "action": {
+    "type": "replace",
+    "waypointIndex": 0,
+    "excludedPlaceIds": ["ChIJ_already_shown"]
+  }
+}
+```
+
+`excludedPlaceIds`には「別の候補を見る」で既に表示した候補を入れる。
+サーバーは現在の全経由地とこれらの候補を除外し、条件内に収まる別候補を返す。
+
+### Delete request
+
+```json
+{
+  "route": { "...": "POST /generate-routeのレスポンス全体" },
+  "preferences": ["ocean", "cafe"],
+  "freeText": "海沿いのカフェ",
+  "timeConstraint": { "type": "none" },
+  "action": {
+    "type": "delete",
+    "waypointIndex": 0
+  }
+}
+```
+
+`waypointIndex`は`route.waypoints`の0始まりの位置。削除後に経由地が0件になる場合は
+`recommendedRoute`を`normalRoute`と同じ値にする。
+
 ## Error response
 
 すべての新規APIは同じ形でエラーを返す。
@@ -158,5 +200,5 @@ Expo側でのみ発生するエラーは次のコードで管理する。
 当面維持する。Expo版は`POST /generate-route`完成後、ルート生成時に既存3 APIを
 個別に呼ばず`POST /generate-route`だけを呼ぶ。
 
-ルート編集用APIは別タスクで定義する。編集APIでも、この文書の`RouteWaypoint`と
-`GenerateRouteResponse`を再利用する。
+Expo版はルート生成に`POST /generate-route`、経由地の変更・削除に
+`POST /edit-route`を使う。既存エンドポイントは旧クライアントとの互換性のため維持する。

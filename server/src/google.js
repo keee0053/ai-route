@@ -37,8 +37,10 @@ const PRICE_LABEL = {
   PRICE_LEVEL_VERY_EXPENSIVE: "とても高い",
 };
 
-/** 出発地・目的地からルートと所要時間を取る */
-export async function computeRoute(key, origin, destination, travelMode = "DRIVE") {
+/** 出発地・目的地・経由地からルートと所要時間を取る */
+export async function computeRoute(key, origin, destination, options = {}) {
+  const travelMode = typeof options === "string" ? options : options.travelMode ?? "DRIVE";
+  const intermediates = typeof options === "string" ? [] : options.intermediates ?? [];
   const res = await fetch(ROUTES_URL, {
     method: "POST",
     headers: {
@@ -50,6 +52,7 @@ export async function computeRoute(key, origin, destination, travelMode = "DRIVE
     body: JSON.stringify({
       origin: toWaypoint(origin),
       destination: toWaypoint(destination),
+      intermediates: intermediates.map(toWaypoint),
       travelMode,
       routingPreference: travelMode === "DRIVE" ? "TRAFFIC_AWARE" : undefined,
       languageCode: "ja",
@@ -61,15 +64,27 @@ export async function computeRoute(key, origin, destination, travelMode = "DRIVE
   const route = (await res.json()).routes?.[0];
   if (!route) throw new Error("ルートが見つかりませんでした");
 
+  const durationMinutes = Math.round(parseInt(route.duration, 10) / 60);
+  const distanceMeters = Math.round(route.distanceMeters);
   return {
-    baseMinutes: Math.round(parseInt(route.duration) / 60),
-    distanceKm: +(route.distanceMeters / 1000).toFixed(1),
+    durationMinutes,
+    distanceMeters,
+    // Legacy names used by POST /search and the Kotlin client.
+    baseMinutes: durationMinutes,
+    distanceKm: +(distanceMeters / 1000).toFixed(1),
     polyline: route.polyline.encodedPolyline,
   };
 }
 
 /** "lat,lng" なら座標、そうでなければ住所や場所名として扱う */
 function toWaypoint(value) {
+  if (value && typeof value === "object") {
+    const lat = Number(value.lat ?? value.latitude);
+    const lng = Number(value.lng ?? value.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return { location: { latLng: { latitude: lat, longitude: lng } } };
+    }
+  }
   const parts = String(value).split(",");
   if (parts.length === 2) {
     const lat = parseFloat(parts[0]);
