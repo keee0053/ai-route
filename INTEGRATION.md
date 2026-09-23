@@ -3,6 +3,9 @@
 This branch keeps the existing Cloudflare Workers backend and adds the Expo app
 under mobile/.
 
+The agreed request, response, units, null handling, and errors for the planned
+route-generation endpoint are documented in `docs/API_CONTRACT.md`.
+
 ## What works in this branch
 
 1. Receive or use a Google Maps route URL.
@@ -26,7 +29,8 @@ Override it for development with EXPO_PUBLIC_API_URL.
 - Compute an exact route containing all selected waypoints.
 - Add POST /edit-route for replacement and deletion recalculation.
 - Replace the temporary client-side duration estimate.
-- Agree on preference-to-genre mapping and candidate ranking.
+- Implement the preference-to-genre mapping and candidate ranking behind the
+  agreed API contract.
 - Verify Google Maps sharing on both Android and iOS.
 - Decide whether to archive the Kotlin Android UI.
 

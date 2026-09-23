@@ -12,9 +12,9 @@ type Waypoint = GenerateRouteResponse['waypoints'][number]
 type EditMode = 'detail' | 'replace' | 'delete'
 
 const candidates: Array<Waypoint & { meta: string; extra: number; reason: string }> = [
-  { placeId: 'demo-maiko', name: '舞子公園', lat: 34.6314, lng: 135.0349, meta: '海沿い・明石海峡大橋', extra: 18, reason: '海辺の景色を楽しめる、ルート沿いの寄り道です。' },
-  { placeId: 'demo-meriken', name: 'メリケンパーク', lat: 34.6826, lng: 135.1874, meta: '港・散歩', extra: 9, reason: '目的地の近くで、港の景色を気軽に楽しめます。' },
-  { placeId: 'demo-shioya', name: '塩屋海岸', lat: 34.6335, lng: 135.0839, meta: '海沿い・静かな場所', extra: 12, reason: 'にぎわいを避けて、海沿いをゆっくり走れる候補です。' },
+  { placeId: 'demo-maiko', name: '舞子公園', lat: 34.6314, lng: 135.0349, category: '公園', rating: null, reviewCount: null, photoUrl: null, tags: ['海沿い'], detourMinutes: 18, meta: '海沿い・明石海峡大橋', extra: 18, reason: '海辺の景色を楽しめる、ルート沿いの寄り道です。' },
+  { placeId: 'demo-meriken', name: 'メリケンパーク', lat: 34.6826, lng: 135.1874, category: '公園', rating: null, reviewCount: null, photoUrl: null, tags: ['港'], detourMinutes: 9, meta: '港・散歩', extra: 9, reason: '目的地の近くで、港の景色を気軽に楽しめます。' },
+  { placeId: 'demo-shioya', name: '塩屋海岸', lat: 34.6335, lng: 135.0839, category: '観光名所', rating: null, reviewCount: null, photoUrl: null, tags: ['静かな場所'], detourMinutes: 12, meta: '海沿い・静かな場所', extra: 12, reason: 'にぎわいを避けて、海沿いをゆっくり走れる候補です。' },
 ]
 
 export default function ResultScreen() {

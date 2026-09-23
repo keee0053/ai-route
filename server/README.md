@@ -13,6 +13,13 @@ Cloudflare Workers。**APIキーは全部ここにある。アプリ側には1�
 | `POST /next` | `{candidates, request?, badTags?, goodTags?, notes?}` → 次の1件を Jev が選ぶ |
 | `GET /photo?name=places/...` | Places の写真を中継(キーを端末に出さないため) |
 
+## 実装予定の統合API
+
+Expo版が使う`POST /generate-route`の入力、出力、単位、エラー形式は
+[`docs/API_CONTRACT.md`](../docs/API_CONTRACT.md)を正式仕様とする。実装時は既存の`/search`、
+`/tag`、`/next`をサーバー内で組み合わせ、経由地込みの正確なRoutes APIの
+再計算結果を返す。
+
 ## 使っているAPI
 
 | | 用途 | 備考 |
