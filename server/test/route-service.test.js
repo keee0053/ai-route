@@ -1,0 +1,145 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { editRoutePlan, generateRoutePlan, RouteServiceError } from "../src/route-service.js";
+
+const candidates = [
+  {
+    id: "place-a",
+    name: "海辺の公園",
+    category: "公園",
+    lat: 34.68,
+    lng: 135.2,
+    rating: 4.6,
+    reviewCount: 400,
+    detourMinutes: 12,
+    routeRatio: 0.4,
+    offRouteKm: 1.2,
+  },
+  {
+    id: "place-b",
+    name: "港のカフェ",
+    category: "カフェ",
+    lat: 34.67,
+    lng: 135.18,
+    rating: 4.4,
+    reviewCount: 240,
+    detourMinutes: 15,
+    routeRatio: 0.7,
+    offRouteKm: 1.5,
+  },
+  {
+    id: "place-c",
+    name: "展望台",
+    category: "観光名所",
+    lat: 34.69,
+    lng: 135.16,
+    rating: 4.2,
+    reviewCount: 180,
+    detourMinutes: 20,
+    routeRatio: 0.8,
+    offRouteKm: 2,
+  },
+];
+
+const generateInput = {
+  origin: "大阪駅",
+  destination: "神戸ハーバーランド",
+  preferences: ["ocean", "cafe"],
+  freeText: "海沿いのカフェ",
+  timeConstraint: { type: "extra_time", minutes: 30 },
+  waypointCount: 2,
+};
+
+function dependencies(overrides = {}) {
+  return {
+    search: async () => ({ baseMinutes: 44, distanceKm: 38.7, candidates }),
+    compute: async (_origin, _destination, waypoints) => ({
+      durationMinutes: 44 + waypoints.length * 9,
+      distanceMeters: 38700 + waypoints.length * 1700,
+    }),
+    pick: async (pool) => ({ id: pool[0].id, reason: "希望に合う場所です。" }),
+    tags: async (candidate) => [candidate.category],
+    photoUrl: () => null,
+    ...overrides,
+  };
+}
+
+test("generateRoutePlan returns an exact route containing selected waypoints", async () => {
+  const result = await generateRoutePlan(generateInput, dependencies());
+
+  assert.equal(result.normalRoute.durationMinutes, 44);
+  assert.equal(result.recommendedRoute.durationMinutes, 62);
+  assert.equal(result.recommendedRoute.distanceMeters, 42100);
+  assert.equal(result.recommendedRoute.extraMinutes, 18);
+  assert.deepEqual(result.waypoints.map((waypoint) => waypoint.placeId), ["place-a", "place-b"]);
+  assert.match(result.googleMapsUrl, /waypoints=34\.68%2C135\.2%7C34\.67%2C135\.18/);
+});
+
+test("generateRoutePlan drops to one waypoint when two exceed the time constraint", async () => {
+  const result = await generateRoutePlan(generateInput, dependencies({
+    compute: async (_origin, _destination, waypoints) => ({
+      durationMinutes: waypoints.length === 2 ? 80 : 58,
+      distanceMeters: 41000,
+    }),
+  }));
+
+  assert.equal(result.waypoints.length, 1);
+  assert.equal(result.recommendedRoute.durationMinutes, 58);
+});
+
+test("generateRoutePlan uses ranked fallback when TypeSafe selection fails", async () => {
+  const result = await generateRoutePlan({ ...generateInput, waypointCount: 1 }, dependencies({
+    pick: async () => { throw new Error("service unavailable"); },
+  }));
+
+  assert.equal(result.waypoints[0].placeId, "place-a");
+});
+
+test("editRoutePlan deletes a waypoint and recalculates the route", async () => {
+  const original = await generateRoutePlan(generateInput, dependencies());
+  const result = await editRoutePlan({
+    route: original,
+    preferences: generateInput.preferences,
+    freeText: generateInput.freeText,
+    timeConstraint: generateInput.timeConstraint,
+    action: { type: "delete", waypointIndex: 0 },
+  }, dependencies());
+
+  assert.deepEqual(result.waypoints.map((waypoint) => waypoint.placeId), ["place-b"]);
+  assert.equal(result.recommendedRoute.durationMinutes, 53);
+  assert.match(result.reason, /海辺の公園を外し/);
+});
+
+test("editRoutePlan replaces a waypoint and excludes already shown candidates", async () => {
+  const original = await generateRoutePlan(generateInput, dependencies());
+  const result = await editRoutePlan({
+    route: original,
+    preferences: generateInput.preferences,
+    freeText: generateInput.freeText,
+    timeConstraint: generateInput.timeConstraint,
+    action: { type: "replace", waypointIndex: 0, excludedPlaceIds: [] },
+  }, dependencies());
+
+  assert.equal(result.waypoints[0].placeId, "place-c");
+  assert.equal(result.waypoints[1].placeId, "place-b");
+});
+
+test("generateRoutePlan rejects invalid input with a structured error", async () => {
+  await assert.rejects(
+    () => generateRoutePlan({ ...generateInput, preferences: ["unknown"] }, dependencies()),
+    (error) => error instanceof RouteServiceError && error.code === "INVALID_REQUEST" && error.status === 400,
+  );
+});
+
+test("generateRoutePlan accepts empty preferences", async () => {
+  const result = await generateRoutePlan({ ...generateInput, preferences: [], freeText: "" }, dependencies());
+
+  assert.ok(result.waypoints.length > 0);
+});
+
+test("generateRoutePlan requires preferences to be an array", async () => {
+  await assert.rejects(
+    () => generateRoutePlan({ ...generateInput, preferences: undefined }, dependencies()),
+    (error) => error instanceof RouteServiceError && error.code === "INVALID_REQUEST",
+  );
+});

@@ -1,9 +1,10 @@
 import { computeRoute, searchAlongRoute, proxyPhoto, queriesForGenre } from "./google.js";
 import { pickNext } from "./jev.js";
 import { generateTags, fallbackTags } from "./gemini.js";
+import { editRoutePlan, generateRoutePlan, RouteServiceError } from "./route-service.js";
 
-// 返す形を変えたら上げる。上げないと古いキャッシュが返り続ける
-const CACHE_VERSION = "v3";
+// Bump this when the shape or filtering of cached data changes.
+const CACHE_VERSION = "v4";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -12,6 +13,7 @@ const json = (data, status = 200) =>
   });
 
 const fail = (message, status = 500) => json({ error: message }, status);
+const apiFail = (code, message, status = 500) => json({ error: { code, message } }, status);
 
 export default {
   async fetch(request, env, ctx) {
@@ -22,8 +24,21 @@ export default {
         case "GET /":
           return json({
             name: "ekz-server",
-            endpoints: ["POST /search", "POST /tag", "POST /next", "GET /photo"],
+            endpoints: [
+              "POST /generate-route",
+              "POST /edit-route",
+              "POST /search",
+              "POST /tag",
+              "POST /next",
+              "GET /photo",
+            ],
           });
+
+        case "POST /generate-route":
+          return await handleGenerateRoute(request, env, ctx);
+
+        case "POST /edit-route":
+          return await handleEditRoute(request, env, ctx);
 
         case "POST /search":
           return await handleSearch(request, env, ctx);
@@ -40,49 +55,73 @@ export default {
         default:
           return fail("not found", 404);
       }
-    } catch (e) {
-      return fail(e.message ?? String(e));
+    } catch (error) {
+      if (error instanceof RouteServiceError) {
+        return apiFail(error.code, error.message, error.status);
+      }
+      const message = error?.message ?? String(error);
+      if (message.includes("ルートが見つかりませんでした")) {
+        return apiFail("ROUTE_NOT_FOUND", message, 404);
+      }
+      console.error(error);
+      return apiFail("UPSTREAM_ERROR", "外部サービスとの通信に失敗しました。", 502);
     }
   },
 };
 
-/**
- * POST /search
- *   { origin: "35.0,135.7" | "京都駅", destination: "...", queries?: [...] }
- * ルートを引いて、沿線の候補をまとめて返す。
- *
- * 同じルートは何度も試すので、Cloudflare のキャッシュに入れておく。
- * これをやらないと Places の無料枠(1,000/月)をすぐ使い切る。
- */
+async function handleGenerateRoute(request, env, ctx) {
+  const body = await readJson(request);
+  return json(await generateRoutePlan(body, routeDependencies(request, env, ctx)));
+}
+
+async function handleEditRoute(request, env, ctx) {
+  const body = await readJson(request);
+  return json(await editRoutePlan(body, routeDependencies(request, env, ctx)));
+}
+
+function routeDependencies(request, env, ctx) {
+  return {
+    search: (origin, destination, genre) => getSearchData(origin, destination, genre, env, ctx),
+    compute: (origin, destination, intermediates) =>
+      computeRoute(env.GOOGLE_MAPS_SERVER_KEY, origin, destination, { intermediates }),
+    pick: (candidates, requestText) => selectCandidate(candidates, requestText, env),
+    tags: async (candidate) => (await getTagData(candidate, env, ctx)).tags,
+    photoUrl: (photoName) => {
+      const url = new URL("/photo", request.url);
+      url.searchParams.set("name", photoName);
+      return url.toString();
+    },
+  };
+}
+
+/** Legacy endpoint used by older clients and the route preview. */
 async function handleSearch(request, env, ctx) {
-  const body = await request.json();
-  const { origin, destination, genre } = body;
-  if (!origin || !destination) return fail("origin と destination が必要です", 400);
+  const body = await readJson(request);
+  if (!body.origin || !body.destination) return fail("origin と destination が必要です", 400);
+  return json(await getSearchData(body.origin, body.destination, body.genre, env, ctx));
+}
 
-  const queries = queriesForGenre(genre);
-
+async function getSearchData(origin, destination, genre, env, ctx) {
   const cacheKey = new Request(
     `https://ekz.cache/search/${CACHE_VERSION}?o=${encodeURIComponent(origin)}&d=${encodeURIComponent(destination)}&g=${encodeURIComponent(genre ?? "any")}`,
   );
   const cache = caches.default;
   const hit = await cache.match(cacheKey);
-  if (hit) return hit;
+  if (hit) return hit.json();
 
   const route = await computeRoute(env.GOOGLE_MAPS_SERVER_KEY, origin, destination);
   const found = await searchAlongRoute(
     env.GOOGLE_MAPS_SERVER_KEY,
     route.polyline,
-    queries,
+    queriesForGenre(genre),
     route.baseMinutes,
   );
-  const candidates = found.candidates;
-
-  candidates.sort((a, b) => a.detourMinutes - b.detourMinutes);
-
-  const res = json({
+  const candidates = [...found.candidates].sort((a, b) => a.detourMinutes - b.detourMinutes);
+  const data = {
     baseMinutes: route.baseMinutes,
+    durationMinutes: route.durationMinutes,
     distanceKm: route.distanceKm,
-    // アプリ側で現在地の進捗を出すために返す。これで走行中もサーバを呼ばずに更新できる
+    distanceMeters: route.distanceMeters,
     polyline: route.polyline,
     count: candidates.length,
     rawCount: found.rawCount,
@@ -90,110 +129,101 @@ async function handleSearch(request, env, ctx) {
     perQuery: found.perQuery,
     polylineLength: found.polylineLength,
     candidates,
-  });
-  // 6時間キャッシュ
-  const cached = new Response(res.body, res);
+  };
+  const cached = json(data);
   cached.headers.set("Cache-Control", "public, max-age=21600");
   ctx.waitUntil(cache.put(cacheKey, cached.clone()));
-  return cached;
+  return data;
 }
-/**
- * POST /tag
- *   { candidate: {...} }
- * その場所の特徴タグを Gemini に都度10個ほど作らせる。
- * 固定リストから選ばせると、どの場所も似たタグになって選ぶ手がかりにならない。
- */
+
 async function handleTag(request, env, ctx) {
-  const body = await request.json();
+  const body = await readJson(request);
   const candidate = body.candidate ?? body.candidates?.[0];
   if (!candidate) return fail("candidate が必要です", 400);
+  return json(await getTagData(candidate, env, ctx));
+}
 
-  // 同じ場所を二度と生成しない。Gemini の無料枠は 5リクエスト/分しかない
-  const cacheKey = new Request(`https://ekz.cache/tag/${CACHE_VERSION}/${encodeURIComponent(candidate.id)}`);
+async function getTagData(candidate, env, ctx) {
+  const id = candidate.id ?? candidate.placeId;
+  const cacheKey = new Request(`https://ekz.cache/tag/${CACHE_VERSION}/${encodeURIComponent(id)}`);
   const cache = caches.default;
   const hit = await cache.match(cacheKey);
-  if (hit) return hit;
+  if (hit) return hit.json();
 
   let tags;
   let source = "gemini";
   let reason = null;
   try {
     tags = await generateTags(env.GEMINI_API_KEY, candidate);
-  } catch (e) {
-    // 429 や 503 で落ちても画面を空にしない
+  } catch (error) {
     tags = fallbackTags(candidate);
     source = "fallback";
-    reason = String(e?.message ?? e).slice(0, 300);
+    reason = String(error?.message ?? error).slice(0, 300);
   }
 
-  const res = json({ id: candidate.id, tags, source, reason });
+  const data = { id, tags, source, reason };
   if (source === "gemini") {
-    const cached = new Response(res.body, res);
+    const cached = json(data);
     cached.headers.set("Cache-Control", "public, max-age=604800");
     ctx.waitUntil(cache.put(cacheKey, cached.clone()));
-    return cached;
   }
-  return res;
+  return data;
 }
 
-
-/**
- * POST /next
- *   { candidates: [...], request?: "甘いものが食べたい", badTags?: ["並ぶ"] }
- * 次に見せる1件を Jev に選ばせる。
- */
 async function handleNext(request, env) {
-  const body = await request.json();
+  const body = await readJson(request);
   if (!Array.isArray(body.candidates)) return fail("candidates が必要です", 400);
-
-  const req = body.request ?? "";
-  const badTags = body.badTags ?? [];
-  const goodTags = body.goodTags ?? [];
-  const notes = body.notes ?? [];
-
-  const picked = await pickNext(env.TYPESAFE_API_KEY, body.candidates, {
-    request: req,
-    badTags,
-    goodTags,
-    notes,
-  });
-
-  return json({
-    ...(picked ?? { id: null }),
-    reason: buildReason({ req, badTags, goodTags, notes }),
-  });
+  return json(await selectCandidate(body.candidates, body.request ?? "", env, body));
 }
 
-/**
- * 「なぜこれを選んだか」の一言。
- *
- * Jev はテキストを作れないが、何を渡して選ばせたかはサーバが知っている。
- * 生成モデルを挟まずに、その入力をそのまま言葉にする。速いし、嘘にならない。
- */
+async function selectCandidate(candidates, requestText, env, feedback = {}) {
+  const reason = buildReason({
+    req: requestText,
+    badTags: feedback.badTags ?? [],
+    goodTags: feedback.goodTags ?? [],
+    notes: feedback.notes ?? [],
+  });
+  if (!env.TYPESAFE_API_KEY) return { id: candidates[0]?.id ?? null, reason };
+
+  try {
+    const picked = await pickNext(env.TYPESAFE_API_KEY, candidates, {
+      request: requestText,
+      badTags: feedback.badTags ?? [],
+      goodTags: feedback.goodTags ?? [],
+      notes: feedback.notes ?? [],
+    });
+    return { ...(picked ?? { id: candidates[0]?.id ?? null }), reason };
+  } catch (error) {
+    console.warn("TypeSafe selection failed; using ranked fallback", error);
+    return { id: candidates[0]?.id ?? null, reason };
+  }
+}
+
 function buildReason({ req, badTags, goodTags, notes }) {
   const parts = [];
   if (req.trim()) parts.push(`「${req.trim()}」に合わせて`);
   if (goodTags.length) parts.push(`「${goodTags.join("・")}」が好みとのことなので`);
   if (badTags.length) parts.push(`「${badTags.join("・")}」を避けて`);
   if (notes.length) parts.push(notes[0]);
-
   if (parts.length === 0) return "評価が高くて寄り道も少ないので、ここを選びました";
-  // 全部並べると長くて読まれない。効く順に2つまで
   return parts.slice(0, 2).join("、") + "、ここを選びました";
 }
 
-/**
- * GET /photo?name=places/xxx/photos/yyy
- * Places の写真を中継する。APIキーを端末に出さないため。
- */
 async function handlePhoto(url, env) {
   const name = url.searchParams.get("name");
   if (!name || !name.startsWith("places/")) return fail("name が不正です", 400);
-
-  const upstream = await proxyPhoto(env.GOOGLE_MAPS_SERVER_KEY, name);
+  const width = Math.min(1600, Math.max(200, Number(url.searchParams.get("maxWidthPx")) || 800));
+  const upstream = await proxyPhoto(env.GOOGLE_MAPS_SERVER_KEY, name, width);
   if (!upstream.ok) return fail(`photo ${upstream.status}`, upstream.status);
+  const response = new Response(upstream.body, upstream);
+  response.headers.set("Cache-Control", "public, max-age=86400");
+  return response;
+}
 
-  const res = new Response(upstream.body, upstream);
-  res.headers.set("Cache-Control", "public, max-age=86400");
-  return res;
+async function readJson(request) {
+  try {
+    return await request.json();
+  } catch {
+    throw new RouteServiceError("INVALID_REQUEST", "JSON形式のリクエストが必要です。", 400);
+  }
 }

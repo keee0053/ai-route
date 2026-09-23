@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "よりみちルート",
+    "slug": "yorimichi-route",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "yorimichi",
+    "userInterfaceStyle": "light",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1,
+            "NSExtensionActivationSupportsText": true
+          },
+          "androidIntentFilters": ["text/*"]
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.yorimichi.route"
+    },
+    "android": {
+      "package": "app.yorimichi.route",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [{ "scheme": "yorimichi" }],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
