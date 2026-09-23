@@ -162,7 +162,7 @@ function TimelineRow({ kind, title, subtitle, time, number, photoUrl, onPress, l
         {kind === 'waypoint' ? (
           <View style={styles.number}><Text style={styles.numberText}>{number}</Text></View>
         ) : (
-          <View style={[styles.endpoint, kind === 'end' && styles.endpointEnd]} />
+          <View style={kind === 'end' ? [styles.endpoint, styles.endpointEnd] : styles.startPoint} />
         )}
         <View style={[styles.railLine, last && styles.railHidden]} />
       </View>
@@ -201,7 +201,9 @@ const styles = StyleSheet.create({
   rail: { width: 26, alignItems: 'center', alignSelf: 'stretch' },
   railLine: { flex: 1, width: 2, backgroundColor: '#CBD5E1' },
   railHidden: { backgroundColor: 'transparent' },
-  endpoint: { width: 13, height: 13, borderRadius: 7, borderWidth: 3, borderColor: colors.brand, backgroundColor: colors.white },
+  endpoint: { width: 13, height: 13, borderRadius: 7, borderWidth: 3, borderColor: colors.origin, backgroundColor: colors.white },
+  // 出発地は Google マップと同じ 白いふちの灰色の丸
+  startPoint: { width: 15, height: 15, borderRadius: 8, backgroundColor: colors.origin, borderWidth: 2, borderColor: colors.white, shadowColor: colors.ink, shadowOpacity: 0.3, shadowRadius: 2, elevation: 2 },
   endpointEnd: { borderColor: colors.destination },
   number: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
   numberText: { color: colors.white, fontSize: 13, fontWeight: '800' },

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { decodePolyline, encodePolyline, thinPoints } from "../src/polyline.js";
-import { clampSize, staticMapUrl } from "../src/route-map.js";
+import { clampSize, ORIGIN_MARKER_PNG, staticMapUrl } from "../src/route-map.js";
 
 test("encodePolyline is the inverse of decodePolyline", () => {
   const points = [[38.5, -120.2], [40.7, -120.95], [43.252, -126.453]];
@@ -30,4 +30,15 @@ test("clampSize keeps sizes within what Static Maps accepts", () => {
   assert.equal(clampSize("2000", 390), 640);
   assert.equal(clampSize("abc", 390), 390);
   assert.equal(clampSize("10", 390), 120);
+});
+
+test("staticMapUrl uses the grey circle icon for the origin when given", () => {
+  const polyline = encodePolyline([[34.7, 135.5], [35.0, 135.7]]);
+  const url = decodeURIComponent(staticMapUrl("KEY", { polyline, width: 390, height: 300, originIconUrl: "https://example.com/marker/origin.png" }));
+  assert.match(url, /markers=anchor:center\|icon:https:\/\/example\.com\/marker\/origin\.png\|34\.7,135\.5/);
+  assert.match(url, /markers=size:mid\|color:0xDC2626\|35,135\.7/);
+});
+
+test("ORIGIN_MARKER_PNG is a PNG", () => {
+  assert.deepEqual([...ORIGIN_MARKER_PNG.slice(0, 4)], [0x89, 0x50, 0x4e, 0x47]);
 });
