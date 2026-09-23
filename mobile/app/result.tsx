@@ -31,11 +31,12 @@ export default function ResultScreen() {
 
   const openNavigation = async () => {
     setLaunchError(null)
+    const url = navigationUrl(route)
     try {
-      await Linking.openURL(route.googleMapsUrl)
+      await Linking.openURL(url)
     } catch {
       try {
-        await WebBrowser.openBrowserAsync(route.googleMapsUrl)
+        await WebBrowser.openBrowserAsync(url)
       } catch {
         setLaunchError('Google Mapsを開けませんでした。時間をおいてもう一度お試しください。')
       }
@@ -119,6 +120,16 @@ export default function ResultScreen() {
       </View>
     </View>
   )
+}
+
+/**
+ * 出発地が現在地なら origin を外して渡す。Google マップが「現在地」から案内するので、
+ * 座標(=住所)が出発地として表示されず、移動中でも今いる場所から始まる
+ */
+function navigationUrl(route: { googleMapsUrl: string; origin: { name: string } }) {
+  if (route.origin.name !== '現在地') return route.googleMapsUrl
+  // React Native の URL は searchParams.delete が無いことがあるので文字列で外す
+  return route.googleMapsUrl.replace(/([?&])origin=[^&]*&?/, '$1').replace(/[?&]$/, '')
 }
 
 type TimelineRowProps = {

@@ -66,7 +66,6 @@ export default function SharedRouteScreen() {
 
         <View style={styles.body}>
           <View style={styles.headingBlock}>
-            <Text style={styles.eyebrow}>ROUTE RECEIVED</Text>
             <Text style={styles.title}>このルートを{`\n`}もっと楽しむ</Text>
           </View>
 
@@ -89,13 +88,22 @@ export default function SharedRouteScreen() {
             </View>
           </View>
 
-          <View style={styles.connectionRow}>
-            <View style={[styles.connectionDot, connection === 'online' ? styles.online : connection === 'offline' ? styles.offline : styles.checking]} />
-            <Text style={styles.connectionText}>
-              {connection === 'online' ? 'サービスに接続済み' : connection === 'offline' ? 'オフライン。Mock画面は確認できます' : '接続を確認中'}
-            </Text>
-            {connection === 'offline' ? <Pressable accessibilityRole="button" onPress={checkConnection}><Text style={styles.retryLink}>再接続</Text></Pressable> : null}
-          </View>
+          {preview?.candidateCount ? (
+            <View style={styles.candidates}>
+              <Text style={styles.candidatesCount}>{preview.candidateCount}<Text style={styles.candidatesUnit}> 件</Text></Text>
+              <Text style={styles.candidatesText}>このルート沿いに寄り道の候補があります。{`
+`}AIが好みに合わせて選びます</Text>
+            </View>
+          ) : null}
+
+          {/* 繋がっているときは何も出さない(開発用の表示だった)。繋がらないときだけ知らせる */}
+          {connection === 'offline' ? (
+            <View style={styles.connectionRow}>
+              <View style={[styles.connectionDot, styles.offline]} />
+              <Text style={styles.connectionText}>サーバに繋がりません</Text>
+              <Pressable accessibilityRole="button" onPress={checkConnection}><Text style={styles.retryLink}>再接続</Text></Pressable>
+            </View>
+          ) : null}
 
           {error ? (
             <View style={styles.errorBlock}>
@@ -147,6 +155,10 @@ const styles = StyleSheet.create({
   metric: { minWidth: 90 },
   metricValue: { color: colors.ink, fontSize: 15, fontWeight: '700' },
   metricDivider: { width: 1, backgroundColor: colors.border },
+  candidates: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.brandSoft, borderRadius: radius.large, paddingHorizontal: 18, paddingVertical: 14 },
+  candidatesCount: { color: colors.brandDark, fontSize: 32, fontWeight: '800' },
+  candidatesUnit: { fontSize: 14, fontWeight: '700' },
+  candidatesText: { flex: 1, color: colors.text, fontSize: 13, lineHeight: 19, fontWeight: '600' },
   connectionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   connectionDot: { width: 8, height: 8, borderRadius: 4 },
   online: { backgroundColor: colors.success },

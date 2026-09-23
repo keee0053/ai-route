@@ -23,6 +23,7 @@ type ParsedRoute = {
 type SearchResponse = {
   baseMinutes: number
   distanceKm: number
+  count?: number
 }
 
 export type HealthResponse = { ok: true }
@@ -67,6 +68,7 @@ export async function getRoutePreview(googleMapsUrl: string): Promise<RoutePrevi
       durationMinutes: search.baseMinutes,
       distanceMeters: Math.round(search.distanceKm * 1000),
     },
+    candidateCount: search.count,
   }
 }
 
