@@ -3,7 +3,7 @@ import { pickNext, tagWithJev } from "./jev.js";
 import { generateTags, fallbackTags } from "./gemini.js";
 import { editRoutePlan, generateRoutePlan, RouteServiceError } from "./route-service.js";
 import { parseShareText } from "./share-link.js";
-import { clampSize, staticMapUrl } from "./route-map.js";
+import { clampSize, ORIGIN_MARKER_PNG, staticMapUrl } from "./route-map.js";
 
 // 経由地のタグ。Gemini のキャッシュがあればそれを使う。無ければこの時間だけ待ち、
 // 間に合わなければ Jev のタグ(0.3秒)で返す。Gemini の生成は裏で続けてキャッシュする
@@ -40,6 +40,7 @@ export default {
               "POST /next",
               "GET /photo",
               "GET /route-map",
+              "GET /marker/origin.png",
             ],
           });
 
@@ -63,6 +64,11 @@ export default {
 
         case "GET /photo":
           return await handlePhoto(url, env);
+
+        case "GET /marker/origin.png":
+          return new Response(ORIGIN_MARKER_PNG, {
+            headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=604800" },
+          });
 
         case "GET /route-map":
           return await handleRouteMap(request, url, env, ctx);
@@ -293,6 +299,8 @@ async function handleRouteMap(request, url, env, ctx) {
     waypoints,
     width: clampSize(url.searchParams.get("w"), 390),
     height: clampSize(url.searchParams.get("h"), 300),
+    // 画像を変えたら v を上げる(Google がアイコンを URL ごとにキャッシュするため)
+    originIconUrl: new URL("/marker/origin.png?v=3", url).toString(),
   }));
   if (!image.ok) {
     // Static Maps API が有効になっていないと 403。アプリは飾りの地図に戻す

@@ -19,8 +19,8 @@ type Props = {
  * API キーはサーバにあるので、端末は画像を受け取るだけ。取れなければ fallback を出す
  */
 const MAX_RETRIES = 2
-/** 9/24: 目的地のピンを赤(2) → 出発地のピンを青(3) */
-const MAP_STYLE_VERSION = 3
+/** 9/24: 目的地のピンを赤(2) → 出発地のピンを青(3) → 出発地を灰色の丸(4) → 塗りつぶしの灰色の丸(5)→ 小さく(6) */
+const MAP_STYLE_VERSION = 6
 const RETRY_DELAY_MS = 3000
 
 export function RouteMap({ origin, destination, waypoints = [], height, style, fallback, children }: Props) {

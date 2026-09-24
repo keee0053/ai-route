@@ -11,6 +11,8 @@ import { colors, radius } from '@/constants/theme'
 import { useRoute } from '@/context/RouteContext'
 
 const HERO_HEIGHT = 380
+/** 下のシートが写真に重なる高さ。地図はこの分だけ低くして、左下の Google のロゴを隠さない */
+const SHEET_OVERLAP = 18
 
 /**
  * 結果画面。上半分は経由地の写真(横スワイプ)、下は 出発→経由地→到着 の時刻つきの流れ。
@@ -52,34 +54,46 @@ export default function ResultScreen() {
       <StatusBar style="light" />
       <ScrollView contentContainerStyle={{ paddingBottom: 150 + insets.bottom }}>
         <View style={{ height: HERO_HEIGHT }}>
-          {count > 0 ? (
-            <ScrollView
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              onMomentumScrollEnd={(event) => setPage(Math.round(event.nativeEvent.contentOffset.x / width))}
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={(event) => setPage(Math.round(event.nativeEvent.contentOffset.x / width))}
+          >
+            {route.waypoints.map((waypoint, index) => (
+              <Pressable key={waypoint.placeId} accessibilityLabel={`${waypoint.name}を選び直す`} onPress={() => openEditor(index)} style={{ width, height: HERO_HEIGHT }}>
+                {waypoint.photoUrl ? <Image source={{ uri: waypoint.photoUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : <View style={[StyleSheet.absoluteFill, styles.noPhoto]} />}
+                <View style={styles.shadeTop} />
+                {/* 段階的に重ねてグラデーション風にする(境目の線を目立たせない) */}
+                <View style={[styles.shadeBottom, { height: 230, opacity: 0.35 }]} />
+                <View style={[styles.shadeBottom, { height: 170, opacity: 0.45 }]} />
+                <View style={[styles.shadeBottom, { height: 110, opacity: 0.55 }]} />
+                <View style={styles.caption}>
+                  <Text style={styles.captionEyebrow}>経由地 {index + 1} / {count}・横にスワイプ</Text>
+                  <Text style={styles.captionName} numberOfLines={2}>{waypoint.name}</Text>
+                  <Text style={styles.captionMeta} numberOfLines={1}>{waypointSummary(waypoint)}・タップで選び直す</Text>
+                </View>
+              </Pressable>
+            ))}
+            {/* 最後の1枚は経由地込みの経路の地図。取れなければ灰色の面に文言だけ出す */}
+            <RouteMap
+              origin={route.origin}
+              destination={route.destination}
+              waypoints={route.waypoints}
+              height={HERO_HEIGHT - SHEET_OVERLAP}
+              style={{ width, marginBottom: SHEET_OVERLAP }}
+              fallback={<View style={[StyleSheet.absoluteFill, styles.noPhoto, styles.noWaypoint]}><Text style={styles.noWaypointText}>{count > 0 ? '地図を読み込み中…' : '寄り道なしのルートです'}</Text></View>}
             >
-              {route.waypoints.map((waypoint, index) => (
-                <Pressable key={waypoint.placeId} accessibilityLabel={`${waypoint.name}を選び直す`} onPress={() => openEditor(index)} style={{ width, height: HERO_HEIGHT }}>
-                  {waypoint.photoUrl ? <Image source={{ uri: waypoint.photoUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : <View style={[StyleSheet.absoluteFill, styles.noPhoto]} />}
-                  <View style={styles.shadeTop} />
-                  {/* 段階的に重ねてグラデーション風にする(境目の線を目立たせない) */}
-                  <View style={[styles.shadeBottom, { height: 230, opacity: 0.35 }]} />
-                  <View style={[styles.shadeBottom, { height: 170, opacity: 0.45 }]} />
-                  <View style={[styles.shadeBottom, { height: 110, opacity: 0.55 }]} />
-                  <View style={styles.caption}>
-                    <Text style={styles.captionEyebrow}>経由地 {index + 1} / {count}{count > 1 ? '・横にスワイプ' : ''}</Text>
-                    <Text style={styles.captionName} numberOfLines={2}>{waypoint.name}</Text>
-                    <Text style={styles.captionMeta} numberOfLines={1}>{waypointSummary(waypoint)}・タップで選び直す</Text>
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
-          ) : (
-            <View style={[StyleSheet.absoluteFill, styles.noPhoto, styles.noWaypoint]}><Text style={styles.noWaypointText}>寄り道なしのルートです</Text></View>
-          )}
-          {count > 1 ? (
-            <View pointerEvents="none" style={styles.dots}>{route.waypoints.map((waypoint, index) => <View key={waypoint.placeId} style={[styles.dot, index === page && styles.dotActive]} />)}</View>
+              <View pointerEvents="none" style={styles.shadeTop} />
+            </RouteMap>
+          </ScrollView>
+          {count > 0 ? (
+            <View pointerEvents="none" style={styles.dots}>
+              {/* 地図の上では白い点が見えないので、濃い下地を敷く */}
+              <View style={[styles.dotsInner, page === count && styles.dotsOnMap]}>
+                {Array.from({ length: count + 1 }, (_, index) => <View key={index} style={[styles.dot, index === page && styles.dotActive]} />)}
+              </View>
+            </View>
           ) : null}
         </View>
 
@@ -107,16 +121,6 @@ export default function ResultScreen() {
             ))}
             <TimelineRow kind="end" title={route.destination.name} time={times ? formatClock(times.destination) : null} last />
           </View>
-
-          {/* 経由地込みの経路を本物の地図で。取れなければ出さない */}
-          <RouteMap
-            origin={route.origin}
-            destination={route.destination}
-            waypoints={route.waypoints}
-            height={200}
-            style={styles.mapCard}
-            fallback={null}
-          />
 
           {route.reason ? (
             <View style={styles.reasonCard}><Text style={styles.reasonLabel}>AIコメント</Text><Text style={styles.reason}>{route.reason}</Text></View>
@@ -162,7 +166,7 @@ function TimelineRow({ kind, title, subtitle, time, number, photoUrl, onPress, l
         {kind === 'waypoint' ? (
           <View style={styles.number}><Text style={styles.numberText}>{number}</Text></View>
         ) : (
-          <View style={[styles.endpoint, kind === 'end' && styles.endpointEnd]} />
+          <View style={kind === 'end' ? [styles.endpoint, styles.endpointEnd] : styles.startPoint} />
         )}
         <View style={[styles.railLine, last && styles.railHidden]} />
       </View>
@@ -189,10 +193,12 @@ const styles = StyleSheet.create({
   captionEyebrow: { color: 'rgba(255,255,255,0.9)', fontSize: 12, fontWeight: '800' },
   captionName: { color: colors.white, fontSize: 25, lineHeight: 31, fontWeight: '800', marginTop: 2 },
   captionMeta: { color: 'rgba(255,255,255,0.92)', fontSize: 12, marginTop: 3 },
-  dots: { position: 'absolute', bottom: 28, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6 },
+  dots: { position: 'absolute', bottom: 24, left: 0, right: 0, alignItems: 'center' },
+  dotsInner: { flexDirection: 'row', gap: 6, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
+  dotsOnMap: { backgroundColor: 'rgba(15, 23, 42, 0.45)' },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.5)' },
   dotActive: { width: 20, backgroundColor: colors.white },
-  sheet: { marginTop: -18, backgroundColor: colors.white, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 18, gap: 14 },
+  sheet: { marginTop: -SHEET_OVERLAP, backgroundColor: colors.white, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 18, gap: 14 },
   summary: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   duration: { color: colors.ink, fontSize: 30, fontWeight: '800' },
   extra: { color: colors.warning, backgroundColor: colors.warningSoft, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 3, fontSize: 12, fontWeight: '700', overflow: 'hidden' },
@@ -201,7 +207,9 @@ const styles = StyleSheet.create({
   rail: { width: 26, alignItems: 'center', alignSelf: 'stretch' },
   railLine: { flex: 1, width: 2, backgroundColor: '#CBD5E1' },
   railHidden: { backgroundColor: 'transparent' },
-  endpoint: { width: 13, height: 13, borderRadius: 7, borderWidth: 3, borderColor: colors.brand, backgroundColor: colors.white },
+  endpoint: { width: 13, height: 13, borderRadius: 7, borderWidth: 3, borderColor: colors.origin, backgroundColor: colors.white },
+  // 出発地は Google マップと同じ 白いふちの灰色の丸
+  startPoint: { width: 15, height: 15, borderRadius: 8, backgroundColor: colors.origin, borderWidth: 2, borderColor: colors.white, shadowColor: colors.ink, shadowOpacity: 0.3, shadowRadius: 2, elevation: 2 },
   endpointEnd: { borderColor: colors.destination },
   number: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
   numberText: { color: colors.white, fontSize: 13, fontWeight: '800' },
@@ -211,7 +219,6 @@ const styles = StyleSheet.create({
   rowEndpoint: { color: colors.ink, fontSize: 14, fontWeight: '700' },
   rowSubtitle: { color: colors.muted, fontSize: 11, marginTop: 1 },
   time: { color: colors.ink, fontSize: 13, fontWeight: '700' },
-  mapCard: { borderRadius: radius.large, backgroundColor: '#F1F5F9' },
   reasonCard: { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD', borderWidth: 1, borderRadius: radius.large, padding: 14, gap: 5 },
   reasonLabel: { color: colors.brand, fontSize: 12, fontWeight: '800' },
   reason: { color: '#475569', fontSize: 13, lineHeight: 20 },

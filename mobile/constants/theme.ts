@@ -13,6 +13,8 @@ export const colors = {
   warningSoft: '#FEF3C7',
   success: '#16A34A',
   danger: '#DC2626',
+  /** 出発地の印。Google マップと同じ 白いふちの灰色の丸 */
+  origin: '#9EA2A6',
   /** 目的地の印。Google マップと同じく赤 */
   destination: '#DC2626',
 }
