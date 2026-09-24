@@ -120,9 +120,7 @@ export default function EditScreen() {
 
   const { waypoint, route } = shown
   const until = minutesUntil(route, index)
-  const reason = shown.original
-    ? 'いまのルートに入っている場所です。タグに印を付けて「別の場所」で選び直せます'
-    : route.reason
+  const reason = shown.original ? null : route.reason
   const marked = [...badTags.map((tag) => `✕${tag}`), ...goodTags.map((tag) => `○${tag}`)]
 
   return (
