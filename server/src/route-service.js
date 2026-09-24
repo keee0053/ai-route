@@ -1,5 +1,3 @@
-import { stayMinutesFor } from "./polyline.js";
-
 const PREFERENCES = new Set([
   "scenic",
   "ocean",
@@ -279,7 +277,6 @@ async function publicWaypoint(candidate, deps) {
     tags: Array.isArray(tags) ? tags.slice(0, 10) : [],
     detourMinutes: Math.max(0, Math.round(candidate.detourMinutes ?? 0)),
     priceRange: candidate.priceRange ?? null,
-    stayMinutes: candidate.stayMinutes ?? stayMinutesFor(candidate.category ?? ""),
     minutesToArrive: Number.isFinite(candidate.minutesToArrive) ? Math.round(candidate.minutesToArrive) : null,
   };
 }

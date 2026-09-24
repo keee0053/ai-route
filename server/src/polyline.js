@@ -71,29 +71,9 @@ export function nearestOnRoute(points, lat, lng) {
  * 正確に出すには候補ごとに Routes API を叩く必要があり、100件では重すぎる。
  * 最終的に選ばれた1件だけ、あとで正確に計算し直す。
  */
-export function estimateDetourMinutes(distanceKm, stayMinutes = 15, speedKmh = 40) {
+export function estimateDetourMinutes(distanceKm, speedKmh = 40) {
   const driving = ((distanceKm * 2) / speedKmh) * 60;
-  return Math.round(driving + stayMinutes);
-}
-
-/**
- * カテゴリごとの滞在時間の目安。
- * 全部同じ値にすると候補の「追加でかかる時間」が横並びになって選べない。
- */
-const STAY_MINUTES = [
-  [/パーキング|サービスエリア|SA|PA/, 15],
-  [/道の駅/, 25],
-  [/展望|景勝|海岸|浜|ビーチ/, 20],
-  [/カフェ|喫茶|スイーツ|菓子|ベーカリー|パン/, 30],
-  [/ラーメン|食堂|レストラン|料理|焼肉|寿司/, 40],
-  [/公園|庭園/, 30],
-  [/博物館|美術館|水族館|動物園|遊園/, 60],
-  [/神社|寺|城|史跡|温泉/, 35],
-];
-
-export function stayMinutesFor(category) {
-  for (const [re, min] of STAY_MINUTES) if (re.test(category)) return min;
-  return 25;
+  return Math.round(driving);
 }
 
 /** 座標の配列を Google のエンコード済みポリラインにする(decodePolyline の逆) */

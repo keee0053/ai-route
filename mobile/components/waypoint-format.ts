@@ -33,10 +33,9 @@ export function arrivalTimes(route: GenerateRouteResponse, start: Date) {
   if (!legs || legs.length !== route.waypoints.length + 1) return null
   const times: Date[] = []
   let minutes = 0
-  route.waypoints.forEach((waypoint, index) => {
+  route.waypoints.forEach((_waypoint, index) => {
     minutes += legs[index]!
     times.push(new Date(start.getTime() + minutes * 60000))
-    minutes += waypoint.stayMinutes ?? 0
   })
   minutes += legs.at(-1)!
   return { waypoints: times, destination: new Date(start.getTime() + minutes * 60000) }
@@ -49,7 +48,6 @@ export function minutesUntil(route: GenerateRouteResponse, index: number) {
     let minutes = 0
     for (let i = 0; i <= index; i += 1) {
       minutes += legs[i]!
-      if (i < index) minutes += route.waypoints[i]!.stayMinutes ?? 0
     }
     return minutes
   }
