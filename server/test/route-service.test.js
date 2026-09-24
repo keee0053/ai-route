@@ -231,6 +231,6 @@ test("route responses keep leg minutes and waypoint arrival details", async () =
   }));
 
   assert.deepEqual(result.recommendedRoute.legMinutes, [20, 30]);
-  assert.equal(typeof result.waypoints[0].stayMinutes, "number");
+  assert.equal("stayMinutes" in result.waypoints[0], false);
   assert.ok("priceRange" in result.waypoints[0]);
 });

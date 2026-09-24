@@ -2,7 +2,6 @@ import {
   decodePolyline,
   nearestOnRoute,
   estimateDetourMinutes,
-  stayMinutesFor,
 } from "./polyline.js";
 
 const ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes";
@@ -184,7 +183,7 @@ function toCandidate(p, routePoints, baseMinutes) {
     priceRange: PRICE_LABEL[p.priceLevel] ?? null,
     photoName: p.photos?.[0]?.name ?? null,
     reviews: (p.reviews ?? []).map((r) => r.text?.text).filter(Boolean).slice(0, 3),
-    detourMinutes: estimateDetourMinutes(off, stayMinutesFor(p.primaryTypeDisplayName?.text ?? "")),
+    detourMinutes: estimateDetourMinutes(off),
     minutesToArrive,
     // ルート全体のどこにある候補か(0〜1)。現在地からの時間をアプリ側で出すのに使う
     routeRatio: +near.ratio.toFixed(4),

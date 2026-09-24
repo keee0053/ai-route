@@ -38,8 +38,6 @@ export type RouteWaypoint = {
   tags: string[]
   detourMinutes: number
   priceRange?: string | null
-  /** 種別から見積もった滞在時間 */
-  stayMinutes?: number
   /** 出発地からその場所に着くまでの見積もり */
   minutesToArrive?: number | null
 }

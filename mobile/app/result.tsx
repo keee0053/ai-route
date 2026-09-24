@@ -113,7 +113,7 @@ export default function ResultScreen() {
                 number={index + 1}
                 photoUrl={waypoint.photoUrl}
                 title={waypoint.name}
-                subtitle={[waypointSummary(waypoint), waypoint.stayMinutes ? `${waypoint.stayMinutes}分ほど滞在` : null].filter(Boolean).join('・')}
+                subtitle={waypointSummary(waypoint)}
                 time={times ? formatClock(times.waypoints[index]!) : null}
                 onPress={() => openEditor(index)}
                 last={false}
