@@ -86,14 +86,6 @@ export default function SharedRouteScreen() {
             </View>
           </View>
 
-          {preview?.candidateCount ? (
-            <View style={styles.candidates}>
-              <Text style={styles.candidatesCount}>{preview.candidateCount}<Text style={styles.candidatesUnit}> 件</Text></Text>
-              <Text style={styles.candidatesText}>このルート沿いに寄り道の候補があります。{`
-`}AIが好みに合わせて選びます</Text>
-            </View>
-          ) : null}
-
           {/* 繋がっているときは何も出さない(開発用の表示だった)。繋がらないときだけ知らせる */}
           {connection === 'offline' ? (
             <View style={styles.connectionRow}>
@@ -168,10 +160,6 @@ const styles = StyleSheet.create({
   metric: { minWidth: 90 },
   metricValue: { color: colors.ink, fontSize: 15, fontWeight: '700' },
   metricDivider: { width: 1, backgroundColor: colors.border },
-  candidates: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.brandSoft, borderRadius: radius.large, paddingHorizontal: 18, paddingVertical: 14 },
-  candidatesCount: { color: colors.brandDark, fontSize: 32, fontWeight: '800' },
-  candidatesUnit: { fontSize: 14, fontWeight: '700' },
-  candidatesText: { flex: 1, color: colors.text, fontSize: 13, lineHeight: 19, fontWeight: '600' },
   connectionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   connectionDot: { width: 8, height: 8, borderRadius: 4 },
   online: { backgroundColor: colors.success },
