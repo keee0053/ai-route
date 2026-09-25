@@ -28,6 +28,7 @@ export function queriesForGenre(genre) {
   return GENRE_QUERIES[genre] ?? DEFAULT_QUERIES;
 }
 
+/** 金額の幅が無いときだけ使う大まかな価格帯 */
 const PRICE_LABEL = {
   PRICE_LEVEL_FREE: "無料",
   PRICE_LEVEL_INEXPENSIVE: "安い",
@@ -35,6 +36,25 @@ const PRICE_LABEL = {
   PRICE_LEVEL_EXPENSIVE: "高い",
   PRICE_LEVEL_VERY_EXPENSIVE: "とても高い",
 };
+
+const yen = (money) => {
+  const units = Number(money?.units);
+  if (!Number.isFinite(units) || money.currencyCode !== "JPY") return null;
+  return `¥${units.toLocaleString("en-US")}`;
+};
+
+/**
+ * 価格相場の表示。Places API の priceRange(例 1000〜2000円)を「¥1,000〜2,000」にする。
+ * 上限が無ければ「¥10,000〜」。金額が無い・円でないときは priceLevel の大まかな表現に戻す
+ */
+export function formatPriceRange(priceRange, priceLevel) {
+  const start = yen(priceRange?.startPrice);
+  const end = yen(priceRange?.endPrice);
+  if (start && end) return `${start}〜${end.slice(1)}`;
+  if (start) return `${start}〜`;
+  if (end) return `〜${end}`;
+  return PRICE_LABEL[priceLevel] ?? null;
+}
 
 /** 出発地・目的地・経由地からルートと所要時間を取る */
 export async function computeRoute(key, origin, destination, options = {}) {
@@ -116,6 +136,7 @@ export async function searchAlongRoute(key, polyline, queries = DEFAULT_QUERIES,
     "places.rating",
     "places.userRatingCount",
     "places.priceLevel",
+    "places.priceRange",
     "places.photos",
     "places.reviews",
   ].join(",");
@@ -180,7 +201,7 @@ function toCandidate(p, routePoints, baseMinutes) {
     lng,
     rating: p.rating ?? null,
     reviewCount: p.userRatingCount ?? null,
-    priceRange: PRICE_LABEL[p.priceLevel] ?? null,
+    priceRange: formatPriceRange(p.priceRange, p.priceLevel),
     photoName: p.photos?.[0]?.name ?? null,
     reviews: (p.reviews ?? []).map((r) => r.text?.text).filter(Boolean).slice(0, 3),
     detourMinutes: estimateDetourMinutes(off),
