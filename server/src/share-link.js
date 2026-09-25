@@ -19,8 +19,8 @@ const CURRENT_LOCATION_NAMES = new Set([
  * @param {typeof fetch} fetchImpl
  * @returns {Promise<{origin:string,destination:string,originIsCurrentLocation:boolean,originName?:string,destinationName?:string}>}
  */
-export async function parseShareText(text, current, fetchImpl = fetch) {
-  const url = await expandUrl(extractUrl(text), fetchImpl);
+export async function parseShareText(text, current, fetchImpl = fetch, sleep = defaultSleep) {
+  const url = await expandUrl(extractUrl(text), fetchImpl, sleep);
   const route = routeFromUrl(url);
 
   const names = {
@@ -59,14 +59,18 @@ export function extractUrl(text) {
   return url;
 }
 
+/**
+ * 作ったばかりの短縮 URL は数秒間 404 を返すことがある(経路を出した直後に共有すると失敗していた)。
+ * 転送先が無いときは間を空けて読み直す。合計で約10秒(アプリの待ち時間 20 秒に収まる)
+ */
+const SHORT_LINK_RETRY_MS = [1000, 2000, 3000, 4000];
+
 /** 短縮 URL をリダイレクトを 1 段ずつ追って展開する(同意ページなどへ勝手に飛ばないように) */
-export async function expandUrl(url, fetchImpl = fetch) {
+export async function expandUrl(url, fetchImpl = fetch, sleep = defaultSleep) {
   let current = url;
   for (let hop = 0; hop < MAX_REDIRECTS; hop += 1) {
     if (!isShortHost(current.hostname)) return current;
-    const response = await fetchImpl(current.toString(), { redirect: "manual" });
-    const location = response.headers.get("location");
-    if (!location) throw parseFailed("短縮 URL を展開できませんでした。");
+    const location = await redirectTarget(current, fetchImpl, sleep);
     current = new URL(location, current);
     if (!isGoogleMapsHost(current.hostname)) throw parseFailed("短縮 URL の展開先が Google マップではありません。");
   }
@@ -194,6 +198,23 @@ function cleanPlace(value) {
   } catch {
     return spaced.trim();
   }
+}
+
+async function redirectTarget(url, fetchImpl, sleep) {
+  const statuses = [];
+  for (let attempt = 0; attempt <= SHORT_LINK_RETRY_MS.length; attempt += 1) {
+    if (attempt > 0) await sleep(SHORT_LINK_RETRY_MS[attempt - 1]);
+    const response = await fetchImpl(url.toString(), { redirect: "manual" });
+    const location = response.headers.get("location");
+    if (location) return location;
+    statuses.push(response.status);
+  }
+  console.warn("short link did not redirect", url.toString(), statuses.join(","));
+  throw parseFailed("短縮 URL を展開できませんでした。少し待ってからもう一度共有してください。");
+}
+
+function defaultSleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function isShortHost(hostname) {
