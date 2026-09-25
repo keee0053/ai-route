@@ -150,3 +150,20 @@ test("gives up on a short link that never redirects", async () => {
   }
   assert.equal(calls, 5);
 });
+
+// iOS の Google マップが共有した URL(9/25・maps.app.goo.gl/KUpiZA1jDJzbVAVQ9?g_st=ic を展開したもの)。
+// /maps/dir/ ではなく saddr/daddr のクエリで、座標は geocode(地点ごとの base64 protobuf)に入っている
+const OSAKA_IOS = "https://www.google.com/maps?geocode=FfGHBAIdC_7pBw%3D%3D;FZWEEQIdD4ETCCkLp-OVjeYAYDFKyFnoIsiuGw%3D%3D&daddr=%E5%A4%A7%E9%98%AA%E5%BA%9C%E5%A4%A7%E9%98%AA%E5%B8%82%E5%8C%97%E5%8C%BA%E6%A2%85%E7%94%B0%EF%BC%93%E4%B8%81%E7%9B%AE%EF%BC%91%E2%88%92%EF%BC%91+%E5%A4%A7%E9%98%AA%E9%A7%85&saddr=33.8513770,132.7754350&dirflg=d&ftid=0x6000e68d95e3a70b:0x1baec822e859c84a";
+
+test("reads the saddr/daddr form that the iOS app shares", () => {
+  assert.deepEqual(route(OSAKA_IOS), {
+    origin: "33.851377,132.775435",
+    destination: "34.702485,135.495951",
+    destinationName: "大阪府大阪市北区梅田３丁目１−１ 大阪駅",
+  });
+});
+
+test("falls back to the daddr name when geocode is missing", () => {
+  assert.deepEqual(route("https://maps.google.com/?saddr=A&daddr=B+to:C"), { origin: "A", destination: "C" });
+  assert.deepEqual(route("https://maps.google.com/?daddr=Kobe"), { origin: null, destination: "Kobe" });
+});
