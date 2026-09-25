@@ -94,6 +94,60 @@ test("automaticWaypointCount grows from two to five with route length", () => {
   assert.equal(automaticWaypointCount(240, { type: "total_time", minutes: 240 }, 10), 0);
 });
 
+test("generateRoutePlan adds waypoints until it uses at least 60 percent of the requested extra time", async () => {
+  const available = Array.from({ length: 7 }, (_, index) => ({
+    id: `place-${index}`,
+    name: `候補${index + 1}`,
+    category: "観光名所",
+    lat: 34.6 + index * 0.01,
+    lng: 135.1 + index * 0.01,
+    rating: 4.8 - index * 0.1,
+    reviewCount: 300 - index,
+    detourMinutes: 10,
+    routeRatio: 0.1 + index * 0.1,
+  }));
+  const result = await generateRoutePlan(
+    { ...generateInput, timeConstraint: { type: "extra_time", minutes: 60 } },
+    dependencies({
+      search: async () => ({ baseMinutes: 44, distanceKm: 38.7, candidates: available }),
+      compute: async (_origin, _destination, waypoints) => ({
+        durationMinutes: 44 + waypoints.length * 10,
+        distanceMeters: 38700 + waypoints.length * 1000,
+      }),
+    }),
+  );
+
+  assert.equal(result.waypoints.length, 4);
+  assert.equal(result.recommendedRoute.extraMinutes, 40);
+});
+
+test("generateRoutePlan stops adding at seven waypoints when it cannot reach 60 percent", async () => {
+  const available = Array.from({ length: 9 }, (_, index) => ({
+    id: `place-${index}`,
+    name: `候補${index + 1}`,
+    category: "公園",
+    lat: 34.6 + index * 0.01,
+    lng: 135.1 + index * 0.01,
+    rating: 4.8 - index * 0.05,
+    reviewCount: 300 - index,
+    detourMinutes: 4,
+    routeRatio: 0.08 + index * 0.09,
+  }));
+  const result = await generateRoutePlan(
+    { ...generateInput, timeConstraint: { type: "extra_time", minutes: 60 } },
+    dependencies({
+      search: async () => ({ baseMinutes: 44, distanceKm: 38.7, candidates: available }),
+      compute: async (_origin, _destination, waypoints) => ({
+        durationMinutes: 44 + waypoints.length * 4,
+        distanceMeters: 38700 + waypoints.length * 500,
+      }),
+    }),
+  );
+
+  assert.equal(result.waypoints.length, 7);
+  assert.equal(result.recommendedRoute.extraMinutes, 28);
+});
+
 test("generateRoutePlan can return more than two waypoints for a long route", async () => {
   const many = [
     ...candidates,

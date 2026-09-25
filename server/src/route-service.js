@@ -23,6 +23,8 @@ const PREFERENCE_LABELS = {
 };
 
 const MAX_AUTO_WAYPOINTS = 5;
+const MAX_GENERATED_WAYPOINTS = 7;
+const MINIMUM_TIME_USAGE_RATIO = 0.6;
 
 export class RouteServiceError extends Error {
   constructor(code, message, status = 400) {
@@ -39,8 +41,11 @@ export async function generateRoutePlan(input, deps) {
   const pool = candidatePool(search.candidates, search.baseMinutes, request.timeConstraint);
 
   const count = automaticWaypointCount(search.baseMinutes, request.timeConstraint, pool.length);
-  const picked = await pickWaypoints(pool, count, requestText(request), deps.pick);
-  const fitted = await fitGeneratedRoute(request, search, picked.candidates, pool, deps.compute);
+  const pickCount = count === 0 || request.timeConstraint.type === "none"
+    ? count
+    : Math.min(MAX_GENERATED_WAYPOINTS, pool.length);
+  const picked = await pickWaypoints(pool, pickCount, requestText(request), deps.pick);
+  const fitted = await fitGeneratedRoute(request, search, count, picked.candidates, deps.compute);
   const waypoints = await Promise.all(fitted.candidates.map((candidate) => publicWaypoint(candidate, deps)));
 
   return routeResponse({
@@ -289,23 +294,49 @@ async function safePick(candidates, text, pick, feedback = {}) {
   }
 }
 
-async function fitGeneratedRoute(request, search, selected, pool, compute) {
+async function fitGeneratedRoute(request, search, initialCount, ranked, compute) {
   const maximum = maximumTotalMinutes(search.baseMinutes, request.timeConstraint);
-  const attempts = [];
-  for (let count = selected.length; count > 0; count -= 1) attempts.push(selected.slice(0, count));
-  for (const candidate of [...selected, ...pool.slice(0, 6)]) {
-    if (!attempts.some((attempt) => attempt.length === 1 && attempt[0].id === candidate.id)) attempts.push([candidate]);
-  }
-  attempts.push([]);
+  const minimum = minimumPreferredTotalMinutes(search.baseMinutes, request.timeConstraint);
+  let count = Math.min(initialCount, ranked.length);
+  let fitted = null;
 
-  for (const candidates of attempts) {
-    const ordered = [...candidates].sort(routeOrder);
-    const route = ordered.length === 0
+  // まず距離別の目安件数を試し、上限超過なら収まるまで減らす。
+  while (count >= 0) {
+    const candidates = ranked.slice(0, count).sort(routeOrder);
+    const route = candidates.length === 0
       ? normalSummary(search)
-      : await compute(request.origin, request.destination, ordered);
-    if (ordered.length === 0 || route.durationMinutes <= maximum) return { candidates: ordered, route };
+      : await compute(request.origin, request.destination, candidates);
+    if (candidates.length === 0 || route.durationMinutes <= maximum) {
+      fitted = { candidates, route };
+      break;
+    }
+    count -= 1;
   }
-  return { candidates: [], route: normalSummary(search) };
+
+  if (!fitted) fitted = { candidates: [], route: normalSummary(search) };
+  if (request.timeConstraint.type === "none" || fitted.route.durationMinutes >= minimum) return fitted;
+
+  // 指定時間の60%に届くまで未使用候補を1件ずつ追加。
+  // 100%を超える候補は飛ばし、最大7件で止める。
+  const used = new Set(fitted.candidates.map((candidate) => candidate.id));
+  for (const candidate of ranked) {
+    if (fitted.candidates.length >= MAX_GENERATED_WAYPOINTS) break;
+    if (used.has(candidate.id)) continue;
+    const proposed = [...fitted.candidates, candidate].sort(routeOrder);
+    const route = await compute(request.origin, request.destination, proposed);
+    if (route.durationMinutes > maximum) continue;
+    fitted = { candidates: proposed, route };
+    used.add(candidate.id);
+    if (route.durationMinutes >= minimum) break;
+  }
+  return fitted;
+}
+
+function minimumPreferredTotalMinutes(baseMinutes, constraint) {
+  if (constraint.type === "none") return baseMinutes;
+  const maximum = maximumTotalMinutes(baseMinutes, constraint);
+  const usable = Math.max(0, maximum - baseMinutes);
+  return baseMinutes + Math.ceil(usable * MINIMUM_TIME_USAGE_RATIO);
 }
 
 async function publicWaypoint(candidate, deps) {
