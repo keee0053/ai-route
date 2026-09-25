@@ -1,7 +1,7 @@
 import { router } from 'expo-router'
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { PrimaryButton } from '@/components/PrimaryButton'
 import { colors, radius } from '@/constants/theme'
 import { useRoute } from '@/context/RouteContext'
@@ -31,14 +31,29 @@ export default function PreferencesScreen() {
   const [time, setTime] = useState<TimeConstraint>(route.timeConstraint)
   const [totalMinutes, setTotalMinutes] = useState(String(route.timeConstraint.type === 'total_time' ? route.timeConstraint.minutes : 120))
   const [freeText, setFreeText] = useState(route.freeText)
+  const [keyboardHeight, setKeyboardHeight] = useState(0)
+  const scrollRef = useRef<ScrollView>(null)
+
+  // edge-to-edge 表示では adjustResize が効かず、キーボードが入力欄とボタンを隠す。高さぶん下を空けて入力欄まで送る
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (event) => {
+      setKeyboardHeight(event.endCoordinates.height)
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50)
+    })
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0))
+    return () => {
+      show.remove()
+      hide.remove()
+    }
+  }, [])
 
   const toggle = (chip: Preference) => setSelected((current) =>
     current.includes(chip) ? current.filter((item) => item !== chip) : [...current, chip],
   )
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <SafeAreaView style={[styles.safeArea, { paddingBottom: keyboardHeight }]}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Pressable accessibilityRole="button" accessibilityLabel="戻る" onPress={() => router.back()} style={styles.backButton}>
           <Text style={styles.backIcon}>‹</Text>
         </Pressable>
