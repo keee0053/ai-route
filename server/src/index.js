@@ -12,6 +12,11 @@ const LATE_TAG_WAIT_MS = 3000;
 
 // Bump this when the shape or filtering of cached data changes.
 const CACHE_VERSION = "v5";
+const GOOGLE_TRAVEL_MODES = {
+  driving: "DRIVE",
+  walking: "WALK",
+  bicycling: "BICYCLE",
+};
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -112,9 +117,12 @@ async function handleEditRoute(request, env, ctx) {
 
 function routeDependencies(request, env, ctx) {
   return {
-    search: (origin, destination, genre) => getSearchData(origin, destination, genre, env, ctx),
-    compute: (origin, destination, intermediates) =>
-      computeRoute(env.GOOGLE_MAPS_SERVER_KEY, origin, destination, { intermediates }),
+    search: (origin, destination, genre, travelMode) => getSearchData(origin, destination, genre, travelMode, env, ctx),
+    compute: (origin, destination, intermediates, travelMode) =>
+      computeRoute(env.GOOGLE_MAPS_SERVER_KEY, origin, destination, {
+        intermediates,
+        travelMode: googleTravelMode(travelMode),
+      }),
     pick: (candidates, requestText, feedback) => selectCandidate(candidates, requestText, env, feedback),
     tags: (candidate) => quickTags(candidate, env, ctx),
     photoUrl: (photoName) => {
@@ -150,23 +158,25 @@ async function quickTags(candidate, env, ctx) {
 async function handleSearch(request, env, ctx) {
   const body = await readJson(request);
   if (!body.origin || !body.destination) return fail("origin と destination が必要です", 400);
-  return json(await getSearchData(body.origin, body.destination, body.genre, env, ctx));
+  return json(await getSearchData(body.origin, body.destination, body.genre, body.travelMode, env, ctx));
 }
 
-async function getSearchData(origin, destination, genre, env, ctx) {
+async function getSearchData(origin, destination, genre, travelMode, env, ctx) {
+  const googleMode = googleTravelMode(travelMode);
   const cacheKey = new Request(
-    `https://ekz.cache/search/${CACHE_VERSION}?o=${encodeURIComponent(origin)}&d=${encodeURIComponent(destination)}&g=${encodeURIComponent(genre ?? "any")}`,
+    `https://ekz.cache/search/${CACHE_VERSION}?o=${encodeURIComponent(origin)}&d=${encodeURIComponent(destination)}&g=${encodeURIComponent(genre ?? "any")}&m=${googleMode}`,
   );
   const cache = caches.default;
   const hit = await cache.match(cacheKey);
   if (hit) return hit.json();
 
-  const route = await computeRoute(env.GOOGLE_MAPS_SERVER_KEY, origin, destination);
+  const route = await computeRoute(env.GOOGLE_MAPS_SERVER_KEY, origin, destination, { travelMode: googleMode });
   const found = await searchAlongRoute(
     env.GOOGLE_MAPS_SERVER_KEY,
     route.polyline,
-    queriesForGenre(genre),
+    queriesForGenre(genre, googleMode),
     route.baseMinutes,
+    googleMode,
   );
   const candidates = [...found.candidates].sort((a, b) => a.detourMinutes - b.detourMinutes);
   const data = {
@@ -290,9 +300,11 @@ async function handleRouteMap(request, url, env, ctx) {
     .map((pair) => pair.split(",").map(Number))
     .filter((pair) => pair.length === 2 && pair.every(Number.isFinite))
     .slice(0, 9);
+  const travelMode = url.searchParams.get("travelMode") ?? "driving";
 
   const route = await computeRoute(env.GOOGLE_MAPS_SERVER_KEY, origin, destination, {
     intermediates: waypoints.map(([lat, lng]) => `${lat},${lng}`),
+    travelMode: googleTravelMode(travelMode),
   });
   const image = await fetch(staticMapUrl(env.GOOGLE_MAPS_SERVER_KEY, {
     polyline: route.polyline,
@@ -322,4 +334,8 @@ async function readJson(request) {
   } catch {
     throw new RouteServiceError("INVALID_REQUEST", "JSON形式のリクエストが必要です。", 400);
   }
+}
+
+function googleTravelMode(value) {
+  return GOOGLE_TRAVEL_MODES[value] ?? GOOGLE_TRAVEL_MODES.driving;
 }

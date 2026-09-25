@@ -24,6 +24,7 @@ Google Mapsの共有URLはExpo側で解析し、このAPIには解析後の`orig
 {
   "origin": "大阪駅",
   "destination": "神戸ハーバーランド",
+  "travelMode": "bicycling",
   "preferences": ["ocean", "cafe"],
   "freeText": "海沿いを走って景色のいいカフェに寄りたい",
   "timeConstraint": {
@@ -37,6 +38,7 @@ Google Mapsの共有URLはExpo側で解析し、このAPIには解析後の`orig
 |---|---|---:|---|
 | `origin` | string | yes | 場所名、住所、または`lat,lng` |
 | `destination` | string | yes | 場所名、住所、または`lat,lng` |
+| `travelMode` | string | yes | `driving`、`walking`、`bicycling` |
 | `preferences` | string[] | yes | 0件以上(空配列はおまかせ)。許可値は下記参照 |
 | `freeText` | string | yes | 未入力は空文字。最大500文字 |
 | `timeConstraint` | object | yes | 下記3形式のいずれか |
@@ -57,12 +59,16 @@ scenic, ocean, night_view, mountain, cafe, gourmet, hot_spring, detour, quiet
 
 `minutes`は1以上の整数とする。`none`は時間上限を指定しないという意味。
 
-経由地数はリクエストで固定しない。バックエンドが通常ルートの所要時間、`timeConstraint`、
+経由地数はリクエストで固定しない。バックエンドが移動手段、通常ルートの所要時間、`timeConstraint`、
 候補件数から自動決定し、正確なルート計算で上限を超える場合は件数を減らす。
 時間指定がある場合は、追加時間が指定幅の60〜100%に入るまで経由地を増やす。
 候補を増やすたびにルートを再計算し、100%を超える候補は使わない。
-経由地の上限は追加可能時間が0〜15分なら3件、16〜30分なら5件、31〜60分なら7件、
+車の経由地上限は追加可能時間が0〜15分なら3件、16〜30分なら5件、31〜60分なら7件、
 61分以上なら9件とする。
+自転車はルートから2km以内を候補とし、初期件数を1〜4件、時間指定時の上限を2〜7件とする。
+徒歩はルートから800m以内を候補とし、初期件数を1〜4件、時間指定時の上限を1〜5件とする。
+候補の寄り道時間の概算には、車40km/h、自転車15km/h、徒歩4.8km/hを使う。
+最終的な所要時間は概算ではなく、選択した移動手段でRoutes APIへ問い合わせ直す。
 条件に合う候補がない場合は`waypoints: []`で通常ルートを返す。
 
 ### Success response
@@ -79,6 +85,7 @@ scenic, ocean, night_view, mountain, cafe, gourmet, hot_spring, detour, quiet
     "lat": 34.67958,
     "lng": 135.178013
   },
+  "travelMode": "bicycling",
   "normalRoute": {
     "durationMinutes": 44,
     "distanceMeters": 38700
@@ -132,6 +139,7 @@ TypeScript上の正本は`mobile/types/route.ts`の`GenerateRouteRequest`と
 ```json
 {
   "route": { "...": "POST /generate-routeのレスポンス全体" },
+  "travelMode": "bicycling",
   "preferences": ["ocean", "cafe"],
   "freeText": "海沿いのカフェ",
   "timeConstraint": { "type": "extra_time", "minutes": 30 },
@@ -147,6 +155,7 @@ TypeScript上の正本は`mobile/types/route.ts`の`GenerateRouteRequest`と
 ```json
 {
   "route": { "...": "POST /generate-routeのレスポンス全体" },
+  "travelMode": "bicycling",
   "preferences": ["ocean", "cafe"],
   "freeText": "海沿いのカフェ",
   "timeConstraint": { "type": "extra_time", "minutes": 30 },
@@ -172,6 +181,7 @@ replace のレスポンスには `eliminatedCount`(このリクエストで外�
 ```json
 {
   "route": { "...": "POST /generate-routeのレスポンス全体" },
+  "travelMode": "bicycling",
   "preferences": ["ocean", "cafe"],
   "freeText": "海沿いのカフェ",
   "timeConstraint": { "type": "none" },

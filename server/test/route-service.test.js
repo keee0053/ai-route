@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   automaticWaypointCount,
+  buildGoogleMapsUrl,
+  candidatePool,
   editRoutePlan,
   generateRoutePlan,
   maximumGeneratedWaypointCount,
@@ -109,6 +111,54 @@ test("maximumGeneratedWaypointCount follows the requested extra-time bands", () 
   assert.equal(maximumGeneratedWaypointCount(60, { type: "extra_time", minutes: 61 }), 9);
   assert.equal(maximumGeneratedWaypointCount(60, { type: "total_time", minutes: 180 }), 9);
   assert.equal(maximumGeneratedWaypointCount(60, { type: "none" }), 5);
+});
+
+test("walking and bicycling use smaller waypoint targets than driving", () => {
+  assert.equal(automaticWaypointCount(60, { type: "none" }, 10, "driving"), 3);
+  assert.equal(automaticWaypointCount(60, { type: "none" }, 10, "bicycling"), 2);
+  assert.equal(automaticWaypointCount(60, { type: "none" }, 10, "walking"), 2);
+  assert.equal(maximumGeneratedWaypointCount(60, { type: "extra_time", minutes: 15 }, "walking"), 1);
+  assert.equal(maximumGeneratedWaypointCount(60, { type: "extra_time", minutes: 30 }, "bicycling"), 3);
+  assert.equal(maximumGeneratedWaypointCount(60, { type: "extra_time", minutes: 90 }, "walking"), 5);
+});
+
+test("candidate distance limits depend on travel mode", () => {
+  const nearby = candidates.map((candidate, index) => ({
+    ...candidate,
+    id: `distance-${index}`,
+    offRouteKm: [0.5, 1.5, 4][index],
+    detourMinutes: 5,
+  }));
+
+  assert.equal(candidatePool(nearby, 60, { type: "none" }, "walking").length, 1);
+  assert.equal(candidatePool(nearby, 60, { type: "none" }, "bicycling").length, 2);
+  assert.equal(candidatePool(nearby, 60, { type: "none" }, "driving").length, 3);
+});
+
+test("generated route keeps the selected travel mode", async () => {
+  const calls = [];
+  const result = await generateRoutePlan(
+    { ...generateInput, travelMode: "walking" },
+    dependencies({
+      search: async (...args) => {
+        calls.push(["search", args.at(-1)]);
+        return {
+          baseMinutes: 60,
+          distanceKm: 4.8,
+          candidates: candidates.map((candidate) => ({ ...candidate, offRouteKm: 0.5, detourMinutes: 8 })),
+        };
+      },
+      compute: async (_origin, _destination, waypoints, travelMode) => {
+        calls.push(["compute", travelMode]);
+        return { durationMinutes: 60 + waypoints.length * 8, distanceMeters: 4800 };
+      },
+    }),
+  );
+
+  assert.equal(result.travelMode, "walking");
+  assert.match(result.googleMapsUrl, /travelmode=walking/);
+  assert.deepEqual(calls, [["search", "walking"], ["compute", "walking"]]);
+  assert.match(buildGoogleMapsUrl("A", "B", [], "bicycling"), /travelmode=bicycling/);
 });
 
 test("generateRoutePlan adds waypoints until it uses at least 60 percent of the requested extra time", async () => {

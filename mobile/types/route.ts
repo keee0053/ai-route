@@ -1,4 +1,5 @@
 export type Preference = 'scenic' | 'ocean' | 'night_view' | 'mountain' | 'cafe' | 'gourmet' | 'hot_spring' | 'detour' | 'quiet'
+export type TravelMode = 'driving' | 'walking' | 'bicycling'
 
 export type TimeConstraint =
   | { type: 'none' }
@@ -45,6 +46,7 @@ export type RouteWaypoint = {
 }
 
 export type GenerateRouteResponse = RoutePreview & {
+  travelMode: TravelMode
   recommendedRoute: RouteSummary & { extraMinutes: number }
   waypoints: RouteWaypoint[]
   reason: string
@@ -60,6 +62,7 @@ export type GenerateRouteRequest = {
   preferences: Preference[]
   freeText: string
   timeConstraint: TimeConstraint
+  travelMode: TravelMode
 }
 
 export type EditRouteAction =
@@ -72,6 +75,7 @@ export type EditRouteRequest = {
   preferences: Preference[]
   freeText: string
   timeConstraint: TimeConstraint
+  travelMode: TravelMode
   action: EditRouteAction
 }
 
@@ -95,4 +99,5 @@ export type GenerateRouteInput = {
   preferences: Preference[]
   freeText: string
   timeConstraint: TimeConstraint
+  travelMode: TravelMode
 }

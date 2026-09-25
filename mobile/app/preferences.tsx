@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { PrimaryButton } from '@/components/PrimaryButton'
 import { colors, radius } from '@/constants/theme'
 import { useRoute } from '@/context/RouteContext'
-import type { Preference, TimeConstraint } from '@/types/route'
+import type { Preference, TimeConstraint, TravelMode } from '@/types/route'
 
 const chips: Array<{ label: string; value: Preference }> = [
   { label: '景色', value: 'scenic' },
@@ -24,6 +24,11 @@ const timeOptions: Array<{ label: string; value: TimeConstraint }> = [
   { label: '+1時間', value: { type: 'extra_time', minutes: 60 } },
   { label: '合計時間を指定', value: { type: 'total_time', minutes: 120 } },
 ]
+const travelModes: Array<{ label: string; value: TravelMode }> = [
+  { label: '車', value: 'driving' },
+  { label: '徒歩', value: 'walking' },
+  { label: '自転車', value: 'bicycling' },
+]
 
 export default function PreferencesScreen() {
   const route = useRoute()
@@ -31,6 +36,7 @@ export default function PreferencesScreen() {
   const [time, setTime] = useState<TimeConstraint>(route.timeConstraint)
   const [totalMinutes, setTotalMinutes] = useState(String(route.timeConstraint.type === 'total_time' ? route.timeConstraint.minutes : 120))
   const [freeText, setFreeText] = useState(route.freeText)
+  const [travelMode, setTravelMode] = useState<TravelMode>(route.travelMode)
   const [keyboardHeight, setKeyboardHeight] = useState(0)
   const scrollRef = useRef<ScrollView>(null)
 
@@ -59,17 +65,43 @@ export default function PreferencesScreen() {
         </Pressable>
         <Text style={styles.routeLabel}>{route.preview?.origin.name} → {route.preview?.destination.name}</Text>
         <Text style={styles.title}>どんな移動に{`\n`}したい？</Text>
-        <Text style={styles.help}>選ばなくてもOK・複数選べます</Text>
 
-        <View style={styles.chips}>
-          {chips.map((chip) => {
-            const active = selected.includes(chip.value)
-            return (
-              <Pressable key={chip.value} onPress={() => toggle(chip.value)} style={[styles.chip, active && styles.activeChip]}>
-                <Text style={[styles.chipText, active && styles.activeChipText]}>{chip.label}</Text>
-              </Pressable>
-            )
-          })}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>移動手段</Text>
+          <View style={styles.modeControl}>
+            {travelModes.map((mode) => {
+              const active = travelMode === mode.value
+              return (
+                <Pressable
+                  key={mode.value}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  onPress={() => setTravelMode(mode.value)}
+                  style={[styles.modeOption, active && styles.activeMode]}
+                >
+                  <Text style={[styles.modeText, active && styles.activeModeText]}>{mode.label}</Text>
+                </Pressable>
+              )
+            })}
+          </View>
+          {travelMode !== 'driving' ? (
+            <Text style={styles.routeWarning}>歩道や自転車道がルートに正確に反映されていない場合があります。</Text>
+          ) : null}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>寄り道の希望</Text>
+          <Text style={styles.help}>選ばなくてもOK・複数選べます</Text>
+          <View style={styles.chips}>
+            {chips.map((chip) => {
+              const active = selected.includes(chip.value)
+              return (
+                <Pressable key={chip.value} onPress={() => toggle(chip.value)} style={[styles.chip, active && styles.activeChip]}>
+                  <Text style={[styles.chipText, active && styles.activeChipText]}>{chip.label}</Text>
+                </Pressable>
+              )
+            })}
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -124,6 +156,7 @@ export default function PreferencesScreen() {
               preferences: selected,
               freeText,
               timeConstraint: time.type === 'total_time' ? { type: 'total_time', minutes: Number(totalMinutes) } : time,
+              travelMode,
             })
             router.push('/generating')
           }}>AIでルートを作る</PrimaryButton>
@@ -142,13 +175,19 @@ const styles = StyleSheet.create({
   routeLabel: { color: colors.faint, fontSize: 12, marginTop: 2 },
   title: { color: colors.ink, fontSize: 28, lineHeight: 35, fontWeight: '800', marginTop: 14 },
   help: { color: colors.faint, fontSize: 13 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { backgroundColor: '#F1F5F9', borderRadius: 18, paddingHorizontal: 16, paddingVertical: 10 },
   activeChip: { backgroundColor: colors.brand },
   chipText: { color: '#475569', fontSize: 14, fontWeight: '600' },
   activeChipText: { color: colors.white },
   section: { marginTop: 20, gap: 10 },
   sectionTitle: { color: colors.ink, fontSize: 13, fontWeight: '700' },
+  modeControl: { flexDirection: 'row', minHeight: 48, borderRadius: radius.medium, backgroundColor: '#F1F5F9', padding: 3 },
+  modeOption: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: radius.small },
+  activeMode: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border },
+  modeText: { color: '#64748B', fontSize: 14, fontWeight: '700' },
+  activeModeText: { color: colors.ink },
+  routeWarning: { color: colors.faint, fontSize: 11, lineHeight: 16 },
   input: { minHeight: 92, borderWidth: 1, borderColor: colors.border, borderRadius: radius.large, backgroundColor: colors.surface, color: colors.ink, fontSize: 14, padding: 14 },
   timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   timeOption: { width: '48%', minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.large, backgroundColor: '#F1F5F9', paddingHorizontal: 8 },

@@ -1,12 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Image, StyleSheet, useWindowDimensions, View, type StyleProp, type ViewStyle } from 'react-native'
 import { API_URL } from '@/services/api'
-import type { RouteEndpoint } from '@/types/route'
+import type { RouteEndpoint, TravelMode } from '@/types/route'
 
 type Props = {
   origin: RouteEndpoint
   destination: RouteEndpoint
   waypoints?: Array<{ lat: number; lng: number }>
+  travelMode?: TravelMode
   height: number
   style?: StyleProp<ViewStyle>
   /** 地図が取れないとき(読み込み中・Static Maps API が無効など)に出すもの */
@@ -23,9 +24,9 @@ const MAX_RETRIES = 2
 const MAP_STYLE_VERSION = 6
 const RETRY_DELAY_MS = 3000
 
-export function RouteMap({ origin, destination, waypoints = [], height, style, fallback, children }: Props) {
+export function RouteMap({ origin, destination, waypoints = [], travelMode = 'driving', height, style, fallback, children }: Props) {
   const { width } = useWindowDimensions()
-  const baseUrl = routeMapUrl(origin, destination, waypoints, width, height)
+  const baseUrl = routeMapUrl(origin, destination, waypoints, width, height, travelMode)
   // 取れなかったら少し待って読み直す(通信の揺れや、Google 側の一時的なエラー)。URL を変えないと画像のキャッシュに当たる
   const [attempt, setAttempt] = useState({ baseUrl, count: 0 })
   const tries = attempt.baseUrl === baseUrl ? attempt.count : 0
@@ -63,7 +64,7 @@ function endpointValue(endpoint: RouteEndpoint) {
   return endpoint.lat !== null && endpoint.lng !== null ? `${endpoint.lat},${endpoint.lng}` : endpoint.name
 }
 
-export function routeMapUrl(origin: RouteEndpoint, destination: RouteEndpoint, waypoints: Array<{ lat: number; lng: number }>, width: number, height: number) {
+export function routeMapUrl(origin: RouteEndpoint, destination: RouteEndpoint, waypoints: Array<{ lat: number; lng: number }>, width: number, height: number, travelMode: TravelMode = 'driving') {
   const params = [
     // 地図の描き方を変えたら上げる(サーバと端末の画像キャッシュを外すため)
     `v=${MAP_STYLE_VERSION}`,
@@ -71,6 +72,7 @@ export function routeMapUrl(origin: RouteEndpoint, destination: RouteEndpoint, w
     `destination=${encodeURIComponent(endpointValue(destination))}`,
     `w=${Math.round(Math.min(width, 640))}`,
     `h=${Math.round(Math.min(height, 640))}`,
+    `travelMode=${travelMode}`,
   ]
   if (waypoints.length > 0) params.push(`waypoints=${encodeURIComponent(waypoints.map((p) => `${p.lat},${p.lng}`).join('|'))}`)
   return `${API_URL}/route-map?${params.join('&')}`
