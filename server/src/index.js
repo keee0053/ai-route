@@ -11,7 +11,7 @@ const GEMINI_TAG_WAIT_MS = 800;
 const LATE_TAG_WAIT_MS = 3000;
 
 // Bump this when the shape or filtering of cached data changes.
-const CACHE_VERSION = "v5";
+const CACHE_VERSION = "v6";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
