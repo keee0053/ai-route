@@ -161,6 +161,37 @@ test("editRoutePlan replaces a waypoint and excludes already shown candidates", 
   assert.equal(result.waypoints[1].placeId, "place-b");
 });
 
+test("editRoutePlan adds an unused waypoint and recalculates the route", async () => {
+  const original = await generateRoutePlan(generateInput, dependencies());
+  const result = await editRoutePlan({
+    route: original,
+    preferences: generateInput.preferences,
+    freeText: generateInput.freeText,
+    timeConstraint: generateInput.timeConstraint,
+    action: { type: "add" },
+  }, dependencies());
+
+  assert.deepEqual(result.waypoints.map((waypoint) => waypoint.placeId), ["place-a", "place-b", "place-c"]);
+  assert.equal(result.recommendedRoute.durationMinutes, 71);
+  assert.match(result.googleMapsUrl, /34\.68%2C135\.2%7C34\.67%2C135\.18%7C34\.69%2C135\.16/);
+});
+
+test("editRoutePlan refuses to add a waypoint outside the time constraint", async () => {
+  const original = await generateRoutePlan(generateInput, dependencies());
+  await assert.rejects(
+    () => editRoutePlan({
+      route: original,
+      preferences: generateInput.preferences,
+      freeText: generateInput.freeText,
+      timeConstraint: generateInput.timeConstraint,
+      action: { type: "add" },
+    }, dependencies({
+      compute: async () => ({ durationMinutes: 90, distanceMeters: 45000 }),
+    })),
+    (error) => error instanceof RouteServiceError && error.code === "NO_CANDIDATES",
+  );
+});
+
 test("generateRoutePlan rejects invalid input with a structured error", async () => {
   await assert.rejects(
     () => generateRoutePlan({ ...generateInput, preferences: ["unknown"] }, dependencies()),

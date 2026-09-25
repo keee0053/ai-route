@@ -2,13 +2,14 @@ import { Redirect, router } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
 import { useMemo, useState } from 'react'
-import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { PrimaryButton } from '@/components/PrimaryButton'
 import { RouteMap } from '@/components/RouteMap'
 import { arrivalTimes, formatClock, formatDuration, waypointSummary } from '@/components/waypoint-format'
 import { colors, radius } from '@/constants/theme'
 import { useRoute } from '@/context/RouteContext'
+import { editRoute } from '@/services/api'
 
 const HERO_HEIGHT = 380
 /** 下のシートが写真に重なる高さ。地図はこの分だけ低くして、左下の Google のロゴを隠さない */
@@ -19,11 +20,14 @@ const SHEET_OVERLAP = 18
  * 経由地をタップすると全画面の編集(/edit)に進む。
  */
 export default function ResultScreen() {
-  const { result: route } = useRoute()
+  const routeState = useRoute()
+  const route = routeState.result
   const { width } = useWindowDimensions()
   const insets = useSafeAreaInsets()
   const [page, setPage] = useState(0)
   const [launchError, setLaunchError] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
   // 画面を開いた時刻を出発時刻とみなす。編集で経路が変わったら計算し直す
   const start = useMemo(() => new Date(), [route])
   const times = useMemo(() => (route ? arrivalTimes(route, start) : null), [route, start])
@@ -31,6 +35,24 @@ export default function ResultScreen() {
   if (!route) return <Redirect href="/" />
 
   const openEditor = (index: number) => router.push({ pathname: '/edit', params: { index: String(index) } })
+
+  const addWaypoint = async () => {
+    setAdding(true)
+    setAddError(null)
+    try {
+      routeState.updateResult(await editRoute({
+        route,
+        preferences: routeState.preferences,
+        freeText: routeState.freeText,
+        timeConstraint: routeState.timeConstraint,
+        action: { type: 'add' },
+      }))
+    } catch (caught) {
+      setAddError(caught instanceof Error ? caught.message : '経由地を追加できませんでした。')
+    } finally {
+      setAdding(false)
+    }
+  }
 
   const openNavigation = async () => {
     setLaunchError(null)
@@ -119,8 +141,10 @@ export default function ResultScreen() {
                 last={false}
               />
             ))}
+            <AddWaypointRow loading={adding} onPress={addWaypoint} />
             <TimelineRow kind="end" title={route.destination.name} time={times ? formatClock(times.destination) : null} last />
           </View>
+          {addError ? <Text accessibilityRole="alert" style={styles.errorText}>{addError}</Text> : null}
 
           {route.reason ? (
             <View style={styles.reasonCard}><Text style={styles.reasonLabel}>AIコメント</Text><Text style={styles.reason}>{route.reason}</Text></View>
@@ -134,6 +158,27 @@ export default function ResultScreen() {
         <Pressable accessibilityRole="button" onPress={() => router.dismissTo('/preferences')}><Text style={styles.regenerate}>条件を変えてもう一度作る</Text></Pressable>
       </View>
     </View>
+  )
+}
+
+function AddWaypointRow({ loading, onPress }: { loading: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="経由地を追加"
+      disabled={loading}
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, styles.addRow, pressed && styles.addRowPressed]}
+    >
+      <View style={styles.rail}>
+        <View style={styles.railLine} />
+        <View style={styles.addPoint}>
+          {loading ? <ActivityIndicator color={colors.brand} size="small" /> : <Text style={styles.addPointText}>+</Text>}
+        </View>
+        <View style={styles.railLine} />
+      </View>
+      <Text style={styles.addText}>{loading ? '経由地を探しています…' : '経由地を追加'}</Text>
+    </Pressable>
   )
 }
 
@@ -213,6 +258,11 @@ const styles = StyleSheet.create({
   endpointEnd: { borderColor: colors.destination },
   number: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
   numberText: { color: colors.white, fontSize: 13, fontWeight: '800' },
+  addRow: { minHeight: 50 },
+  addRowPressed: { opacity: 0.65 },
+  addPoint: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: colors.brand, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' },
+  addPointText: { color: colors.brand, fontSize: 22, lineHeight: 23, fontWeight: '500' },
+  addText: { color: colors.brand, fontSize: 14, fontWeight: '800' },
   thumb: { width: 46, height: 46, borderRadius: 10 },
   rowText: { flex: 1 },
   rowTitle: { color: colors.ink, fontSize: 15, fontWeight: '800' },

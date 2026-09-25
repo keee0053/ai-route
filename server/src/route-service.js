@@ -62,6 +62,42 @@ export async function editRoutePlan(input, deps) {
   const current = request.route;
   const index = request.action.waypointIndex;
 
+  if (request.action.type === "add") {
+    const origin = endpointValue(current.origin);
+    const destination = endpointValue(current.destination);
+    const search = await deps.search(origin, destination, genreForPreferences(request.preferences));
+    const excluded = new Set([
+      ...current.waypoints.map((waypoint) => waypoint.placeId),
+      ...request.action.excludedPlaceIds,
+    ]);
+    const pool = candidatePool(search.candidates, current.normalRoute.durationMinutes, request.timeConstraint)
+      .filter((candidate) => !excluded.has(candidate.id));
+    if (pool.length === 0) throw noCandidates();
+
+    const picked = await safePick(pool, requestText(request), deps.pick);
+    const ordered = picked.candidate
+      ? [picked.candidate, ...pool.filter((candidate) => candidate.id !== picked.candidate.id)]
+      : pool;
+    const maximum = maximumTotalMinutes(current.normalRoute.durationMinutes, request.timeConstraint);
+
+    for (const candidate of ordered.slice(0, 8)) {
+      const proposed = [...current.waypoints, candidate].sort(routeOrder);
+      const exact = await deps.compute(origin, destination, proposed);
+      if (exact.durationMinutes > maximum) continue;
+      const added = await publicWaypoint(candidate, deps);
+      const waypoints = proposed.map((waypoint) => waypoint === candidate ? added : waypoint);
+      return routeResponse({
+        ...current,
+        recommendedRoute: exact,
+        waypoints,
+        reason: picked.reason || `${candidate.name}を経由地に追加しました。`,
+        mapsOrigin: origin,
+        mapsDestination: destination,
+      });
+    }
+    throw noCandidates();
+  }
+
   if (request.action.type === "delete") {
     const waypoints = current.waypoints.filter((_, waypointIndex) => waypointIndex !== index);
     const recommended = waypoints.length === 0
@@ -152,10 +188,10 @@ export function validateEditRequest(input) {
     throw invalid("routeの形式が不正です。");
   }
   const action = input.action;
-  if (!action || (action.type !== "delete" && action.type !== "replace")) {
-    throw invalid("action.typeはdeleteまたはreplaceで指定してください。");
+  if (!action || !["add", "delete", "replace"].includes(action.type)) {
+    throw invalid("action.typeはadd、delete、replaceのいずれかで指定してください。");
   }
-  if (!Number.isInteger(action.waypointIndex) || action.waypointIndex < 0 || action.waypointIndex >= route.waypoints.length) {
+  if (action.type !== "add" && (!Number.isInteger(action.waypointIndex) || action.waypointIndex < 0 || action.waypointIndex >= route.waypoints.length)) {
     throw invalid("waypointIndexが範囲外です。");
   }
   return {
@@ -165,7 +201,7 @@ export function validateEditRequest(input) {
     timeConstraint: validateTimeConstraint(input.timeConstraint),
     action: {
       type: action.type,
-      waypointIndex: action.waypointIndex,
+      waypointIndex: action.type === "add" ? undefined : action.waypointIndex,
       excludedPlaceIds: Array.isArray(action.excludedPlaceIds)
         ? action.excludedPlaceIds.filter((id) => typeof id === "string").slice(0, 50)
         : [],
@@ -306,6 +342,7 @@ async function publicWaypoint(candidate, deps) {
     detourMinutes: Math.max(0, Math.round(candidate.detourMinutes ?? 0)),
     priceRange: candidate.priceRange ?? null,
     minutesToArrive: Number.isFinite(candidate.minutesToArrive) ? Math.round(candidate.minutesToArrive) : null,
+    routeRatio: Number.isFinite(candidate.routeRatio) ? candidate.routeRatio : null,
   };
 }
 

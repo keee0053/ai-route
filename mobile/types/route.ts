@@ -40,6 +40,8 @@ export type RouteWaypoint = {
   priceRange?: string | null
   /** 出発地からその場所に着くまでの見積もり */
   minutesToArrive?: number | null
+  /** 通常ルート上の位置(0〜1)。追加後の並べ替えに使う */
+  routeRatio?: number | null
 }
 
 export type GenerateRouteResponse = RoutePreview & {
@@ -61,6 +63,7 @@ export type GenerateRouteRequest = {
 }
 
 export type EditRouteAction =
+  | { type: 'add'; excludedPlaceIds?: string[] }
   | { type: 'delete'; waypointIndex: number }
   | { type: 'replace'; waypointIndex: number; excludedPlaceIds: string[]; badTags?: string[]; goodTags?: string[] }
 
