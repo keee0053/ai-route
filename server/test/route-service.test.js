@@ -46,7 +46,7 @@ const generateInput = {
   destination: "神戸ハーバーランド",
   preferences: ["ocean", "cafe"],
   freeText: "海沿いのカフェ",
-  timeConstraint: { type: "extra_time", minutes: 30 },
+  timeConstraint: { type: "extra_time", minutes: 20 },
 };
 
 function dependencies(overrides = {}) {
@@ -77,7 +77,7 @@ test("generateRoutePlan returns an exact route containing selected waypoints", a
 test("generateRoutePlan drops to one waypoint when two exceed the time constraint", async () => {
   const result = await generateRoutePlan(generateInput, dependencies({
     compute: async (_origin, _destination, waypoints) => ({
-      durationMinutes: waypoints.length === 2 ? 80 : 58,
+      durationMinutes: waypoints.length >= 2 ? 80 : 58,
       distanceMeters: 41000,
     }),
   }));
@@ -86,18 +86,19 @@ test("generateRoutePlan drops to one waypoint when two exceed the time constrain
   assert.equal(result.recommendedRoute.durationMinutes, 58);
 });
 
-test("automaticWaypointCount grows with route length and available time", () => {
-  assert.equal(automaticWaypointCount(20, { type: "none" }, 10), 1);
-  assert.equal(automaticWaypointCount(60, { type: "none" }, 10), 2);
-  assert.equal(automaticWaypointCount(120, { type: "none" }, 10), 3);
-  assert.equal(automaticWaypointCount(240, { type: "none" }, 10), 4);
-  assert.equal(automaticWaypointCount(240, { type: "extra_time", minutes: 30 }, 10), 2);
+test("automaticWaypointCount grows from two to five with route length", () => {
+  assert.equal(automaticWaypointCount(20, { type: "none" }, 10), 2);
+  assert.equal(automaticWaypointCount(60, { type: "none" }, 10), 3);
+  assert.equal(automaticWaypointCount(120, { type: "none" }, 10), 4);
+  assert.equal(automaticWaypointCount(240, { type: "none" }, 10), 5);
+  assert.equal(automaticWaypointCount(240, { type: "total_time", minutes: 240 }, 10), 0);
 });
 
 test("generateRoutePlan can return more than two waypoints for a long route", async () => {
   const many = [
     ...candidates,
     { id: "place-d", name: "道の駅", category: "道の駅", lat: 34.65, lng: 135.1, rating: 4.1, detourMinutes: 12, routeRatio: 0.6 },
+    { id: "place-e", name: "展望公園", category: "公園", lat: 34.64, lng: 135.05, rating: 4.0, detourMinutes: 14, routeRatio: 0.9 },
   ];
   const result = await generateRoutePlan(
     { ...generateInput, timeConstraint: { type: "none" } },
@@ -110,7 +111,7 @@ test("generateRoutePlan can return more than two waypoints for a long route", as
     }),
   );
 
-  assert.equal(result.waypoints.length, 4);
+  assert.equal(result.waypoints.length, 5);
 });
 
 test("generateRoutePlan returns the normal route when no waypoint candidate is available", async () => {
