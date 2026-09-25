@@ -229,6 +229,52 @@ function toCandidate(p, routePoints, baseMinutes) {
   };
 }
 
+/**
+ * 名前だけで共有された地点を座標にする。名前だけで経路を引くと同名の遠い場所になる(「潤和」→熊本)。
+ * まず現在地の周り(±0.5度)に絞って探し、名前が合う場所があればそれを使う。
+ * 無ければ全国から探す(絞った検索は名前が違っても近くの何かを返す: 神戸で「東京タワー」→神戸ポートタワー)
+ */
+export async function findPlace(key, query, near) {
+  const box = 0.5;
+  const nearby = await searchPlaces(key, query, 5, {
+    locationRestriction: {
+      rectangle: {
+        low: { latitude: near.lat - box, longitude: near.lng - box },
+        high: { latitude: near.lat + box, longitude: near.lng + box },
+      },
+    },
+  });
+  const wanted = normalizeName(query);
+  const match = nearby.find((place) => normalizeName(place.name) === wanted)
+    ?? nearby.find((place) => normalizeName(place.name).includes(wanted) || wanted.includes(normalizeName(place.name)));
+  if (match) return match.location;
+  const [anywhere] = await searchPlaces(key, query, 1, {
+    locationBias: { circle: { center: { latitude: near.lat, longitude: near.lng }, radius: 50000 } },
+  });
+  return anywhere?.location ?? null;
+}
+
+async function searchPlaces(key, query, pageSize, area) {
+  const res = await fetch(PLACES_URL, {
+    method: "POST",
+    headers: {
+      "X-Goog-Api-Key": key,
+      "X-Goog-FieldMask": "places.location,places.displayName",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ textQuery: query, languageCode: "ja", pageSize, ...area }),
+  });
+  if (!res.ok) throw new Error(`Places API ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return ((await res.json()).places ?? [])
+    .filter((place) => place.location)
+    .map((place) => ({
+      name: place.displayName?.text ?? "",
+      location: { lat: place.location.latitude, lng: place.location.longitude },
+    }));
+}
+
+const normalizeName = (value) => value.normalize("NFKC").replace(/\s/g, "").toLowerCase();
+
 /** 写真を中継する。APIキーを端末に出さないため */
 export async function proxyPhoto(key, photoName, maxWidthPx = 800) {
   const url =

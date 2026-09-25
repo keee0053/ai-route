@@ -19,9 +19,20 @@ const CURRENT_LOCATION_NAMES = new Set([
  * @param {typeof fetch} fetchImpl
  * @returns {Promise<{origin:string,destination:string,originIsCurrentLocation:boolean,originName?:string,destinationName?:string}>}
  */
-export async function parseShareText(text, current, fetchImpl = fetch, sleep = defaultSleep) {
+/**
+ * @param {(query:string, near:{lat:number,lng:number}) => Promise<{lat:number,lng:number}|null>} [resolvePlace]
+ *   地点の共有で名前しか分からないとき、現在地の近くで名前を座標にする(同名の遠い場所を避ける)
+ */
+export async function parseShareText(text, current, fetchImpl = fetch, sleep = defaultSleep, resolvePlace = null) {
   const url = await expandUrl(extractUrl(text), fetchImpl, sleep);
   const route = routeFromUrl(url);
+  if (route.isPlace && current && resolvePlace && !isCoordinateText(route.destination)) {
+    const found = await resolvePlace(route.destination, current);
+    if (found) {
+      route.destinationName = route.destination;
+      route.destination = `${found.lat},${found.lng}`;
+    }
+  }
 
   const names = {
     ...(route.originName ? { originName: route.originName } : {}),
@@ -83,6 +94,8 @@ export async function expandUrl(url, fetchImpl = fetch, sleep = defaultSleep) {
  * data= に地点の座標があればそちらを使い、地名は originName / destinationName で返す。
  */
 export function routeFromUrl(url) {
+  const place = placeFromUrl(url);
+  if (place) return place;
   const route = routeNamesFromUrl(url);
   const result = { origin: route.origin, destination: route.destination };
   const coordinates = url.searchParams.has("daddr") ? geocodeCoordinates(url) : placeCoordinates(url.pathname);
@@ -100,6 +113,40 @@ export function routeFromUrl(url) {
     if (!isCoordinateText(route.destination)) result.destinationName = route.destination;
   }
   return result;
+}
+
+/**
+ * 経路ではなく地点が共有されたとき。出発地は現在地(origin: null)にして、その地点へのルートにする。
+ *   /maps/place/<名前>/@..../data=...!8m2!3d<緯度>!4d<経度>  (/maps/search/<名前> も同じ)
+ *   ?q=<名前か座標>・/maps/search/?api=1&query=<名前か座標>
+ * 座標が書かれていなければ名前だけを返す(isPlace を見て、呼び出し側が現在地の近くで座標にする)
+ */
+function placeFromUrl(url) {
+  if (url.searchParams.has("daddr") || url.searchParams.has("destination")) return null;
+  const segments = url.pathname.split("/");
+  if (segments.includes("dir")) return null;
+
+  const at = segments.findIndex((segment) => segment === "place" || segment === "search");
+  const pathName = at >= 0 ? segments[at + 1] ?? "" : "";
+  const nameInPath = pathName && !pathName.startsWith("@") && !pathName.startsWith("data=") ? cleanPlace(pathName) : "";
+  const name = nameInPath || (url.searchParams.get("q") ?? url.searchParams.get("query") ?? "").trim();
+  const coordinates = dataPointCoordinates(url.pathname) ?? (isCoordinateText(name) ? name.replace(/\s/g, "") : null);
+  if (!name && !coordinates) return null;
+  if (!coordinates) return { origin: null, destination: name, isPlace: true };
+  return {
+    origin: null,
+    destination: coordinates,
+    ...(name && !isCoordinateText(name) ? { destinationName: name } : {}),
+    isPlace: true,
+  };
+}
+
+/** 地点の data= の !8m2!3d<緯度>!4d<経度>(最後のもの) */
+function dataPointCoordinates(pathname) {
+  const data = pathname.split("/").find((segment) => segment.startsWith("data="));
+  const matches = [...(data ?? "").matchAll(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/g)];
+  const last = matches.at(-1);
+  return last ? `${Number(last[1])},${Number(last[2])}` : null;
 }
 
 /**
@@ -236,7 +283,10 @@ function routeNamesFromUrl(url) {
   // 出発地が現在地のときは <出発地> が空になる(/maps/dir//目的地/...)
   const segments = url.pathname.split("/");
   const dirIndex = segments.indexOf("dir");
-  if (dirIndex < 0) throw parseFailed("ルートの URL ではありません。Google マップで経路を出してから共有してください。");
+  if (dirIndex < 0) {
+    console.warn("unrecognized maps url", url.toString());
+    throw parseFailed("ルートや場所の URL として読めませんでした。Google マップで経路か場所を出してから共有してください。");
+  }
   const places = [];
   for (const segment of segments.slice(dirIndex + 1)) {
     if (segment.startsWith("@") || segment.startsWith("data=")) break;

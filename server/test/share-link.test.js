@@ -51,14 +51,17 @@ test("asks for the current location when the origin is missing", async () => {
   );
 });
 
-test("rejects text that is not a Google Maps route", async () => {
-  for (const text of ["", "hello", "https://example.com/maps/dir/A/B", "https://www.google.com/maps/place/Kobe"]) {
+test("rejects text that is not a Google Maps route or place", async () => {
+  const warn = console.warn;
+  console.warn = () => {};
+  for (const text of ["", "hello", "https://example.com/maps/dir/A/B", "https://www.google.com/maps/@34.7,135.2,12z"]) {
     await assert.rejects(
       () => parseShareText(text, here),
       (error) => error instanceof RouteServiceError && error.code === "MAPS_URL_PARSE_FAILED",
       text,
     );
   }
+  console.warn = warn;
 });
 
 test("refuses a short link that redirects away from Google Maps", async () => {
@@ -166,4 +169,35 @@ test("reads the saddr/daddr form that the iOS app shares", () => {
 test("falls back to the daddr name when geocode is missing", () => {
   assert.deepEqual(route("https://maps.google.com/?saddr=A&daddr=B+to:C"), { origin: "A", destination: "C" });
   assert.deepEqual(route("https://maps.google.com/?daddr=Kobe"), { origin: null, destination: "Kobe" });
+});
+
+// 経路ではなく地点を共有したときは、現在地からその地点へのルートにする(9/25)
+const AKASHI_PLACE = "https://www.google.com/maps/place/%E6%98%8E%E7%9F%B3%E5%9F%8E%E8%B7%A1/@34.6523517,134.9910952,17z/data=!3m1!4b1!4m6!3m5!1s0x3554d4c86091ef97:0xd8a2de1fedbc6de1!8m2!3d34.6523517!4d134.9910952!16s%2Fm%2F02q2bdm?entry=ttu";
+
+test("treats a shared place as a route from the current location", async () => {
+  assert.deepEqual(route(AKASHI_PLACE), { origin: null, destination: "34.6523517,134.9910952", destinationName: "明石城跡", isPlace: true });
+  await assert.rejects(
+    () => parseShareText(AKASHI_PLACE, null),
+    (error) => error instanceof RouteServiceError && error.code === "ORIGIN_REQUIRED",
+  );
+  assert.deepEqual(await parseShareText(AKASHI_PLACE, here), {
+    origin: "34.7025,135.4959",
+    destination: "34.6523517,134.9910952",
+    originIsCurrentLocation: true,
+    destinationName: "明石城跡",
+  });
+});
+
+test("reads a place from ?q= with coordinates or a name", () => {
+  assert.deepEqual(route("https://maps.google.com/?q=34.66,135.00"), { origin: null, destination: "34.66,135.00", isPlace: true });
+  assert.deepEqual(route("https://maps.google.com/?q=%E6%BD%A4%E5%92%8C&ftid=0x1:0x2"), { origin: null, destination: "潤和", isPlace: true });
+  assert.deepEqual(route("https://www.google.com/maps/search/?api=1&query=%E6%BD%A4%E5%92%8C"), { origin: null, destination: "潤和", isPlace: true });
+});
+
+test("looks up a place given only by name near the current location", async () => {
+  let asked = null;
+  const resolvePlace = async (query, near) => { asked = { query, near }; return { lat: 34.666, lng: 135.001 }; };
+  const result = await parseShareText("https://maps.google.com/?q=%E6%BD%A4%E5%92%8C", here, fetch, async () => {}, resolvePlace);
+  assert.deepEqual(asked, { query: "潤和", near: here });
+  assert.deepEqual(result, { origin: "34.7025,135.4959", destination: "34.666,135.001", originIsCurrentLocation: true, destinationName: "潤和" });
 });
