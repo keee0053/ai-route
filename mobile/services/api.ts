@@ -83,7 +83,6 @@ export async function generateRoute(input: GenerateRouteInput): Promise<Generate
     preferences: input.preferences,
     freeText: input.freeText,
     timeConstraint: input.timeConstraint,
-    waypointCount: 2,
   }
   const result = await postJson<GenerateRouteResponse>('/generate-route', request)
   // サーバは座標をそのまま名前にするので、表示名を付け直す。編集ではこの名前がそのまま引き継がれる

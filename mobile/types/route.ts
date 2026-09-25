@@ -58,7 +58,6 @@ export type GenerateRouteRequest = {
   preferences: Preference[]
   freeText: string
   timeConstraint: TimeConstraint
-  waypointCount: 1 | 2
 }
 
 export type EditRouteAction =

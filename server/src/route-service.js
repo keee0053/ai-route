@@ -22,6 +22,8 @@ const PREFERENCE_LABELS = {
   quiet: "静かな場所",
 };
 
+const MAX_AUTO_WAYPOINTS = 4;
+
 export class RouteServiceError extends Error {
   constructor(code, message, status = 400) {
     super(message);
@@ -35,9 +37,9 @@ export async function generateRoutePlan(input, deps) {
   const request = validateGenerateRequest(input);
   const search = await deps.search(request.origin, request.destination, genreForPreferences(request.preferences));
   const pool = candidatePool(search.candidates, search.baseMinutes, request.timeConstraint);
-  if (pool.length === 0) throw noCandidates();
 
-  const picked = await pickWaypoints(pool, request.waypointCount, requestText(request), deps.pick);
+  const count = automaticWaypointCount(search.baseMinutes, request.timeConstraint, pool.length);
+  const picked = await pickWaypoints(pool, count, requestText(request), deps.pick);
   const fitted = await fitGeneratedRoute(request, search, picked.candidates, pool, deps.compute);
   const waypoints = await Promise.all(fitted.candidates.map((candidate) => publicWaypoint(candidate, deps)));
 
@@ -47,7 +49,9 @@ export async function generateRoutePlan(input, deps) {
     normalRoute: normalSummary(search),
     recommendedRoute: fitted.route,
     waypoints,
-    reason: picked.reason || defaultReason(request.preferences),
+    reason: picked.reason || (waypoints.length > 0
+      ? defaultReason(request.preferences)
+      : "条件に合う寄り道候補がなかったため、通常ルートにしました。"),
     mapsOrigin: request.origin,
     mapsDestination: request.destination,
   });
@@ -138,9 +142,7 @@ export function validateGenerateRequest(input) {
   const preferences = validatePreferences(input.preferences);
   const freeText = typeof input.freeText === "string" ? input.freeText.trim().slice(0, 500) : "";
   const timeConstraint = validateTimeConstraint(input.timeConstraint);
-  const waypointCount = input.waypointCount;
-  if (waypointCount !== 1 && waypointCount !== 2) throw invalid("waypointCountは1または2で指定してください。");
-  return { origin, destination, preferences, freeText, timeConstraint, waypointCount };
+  return { origin, destination, preferences, freeText, timeConstraint };
 }
 
 export function validateEditRequest(input) {
@@ -207,6 +209,28 @@ export function maximumTotalMinutes(baseMinutes, constraint) {
   return constraint.minutes;
 }
 
+/** 短い移動で経由地を詰め込まず、長い移動では候補を増やす。時間指定は件数の上限としても使う。 */
+export function automaticWaypointCount(baseMinutes, constraint, availableCount) {
+  const byRoute = baseMinutes < 30 ? 1 : baseMinutes < 90 ? 2 : baseMinutes < 180 ? 3 : MAX_AUTO_WAYPOINTS;
+  const availableExtra = constraint.type === "none"
+    ? Number.POSITIVE_INFINITY
+    : constraint.type === "extra_time"
+      ? constraint.minutes
+      : Math.max(0, constraint.minutes - baseMinutes);
+  const byTime = availableExtra === Number.POSITIVE_INFINITY
+    ? MAX_AUTO_WAYPOINTS
+    : availableExtra <= 0
+      ? 0
+      : availableExtra <= 15
+        ? 1
+        : availableExtra <= 45
+          ? 2
+          : availableExtra <= 90
+            ? 3
+            : MAX_AUTO_WAYPOINTS;
+  return Math.max(0, Math.min(MAX_AUTO_WAYPOINTS, byRoute, byTime, availableCount));
+}
+
 export function buildGoogleMapsUrl(origin, destination, waypoints) {
   const params = new URLSearchParams({ api: "1", travelmode: "driving", origin, destination });
   if (waypoints.length > 0) {
@@ -227,7 +251,7 @@ async function pickWaypoints(pool, count, text, pick) {
     if (choice.reason) reasons.push(choice.reason);
     remaining = remaining.filter((item) => item.id !== candidate.id);
   }
-  return { candidates: selected.sort(routeOrder), reason: reasons[0] ?? null };
+  return { candidates: selected, reason: reasons[0] ?? null };
 }
 
 async function safePick(candidates, text, pick, feedback = {}) {
@@ -245,17 +269,21 @@ async function safePick(candidates, text, pick, feedback = {}) {
 
 async function fitGeneratedRoute(request, search, selected, pool, compute) {
   const maximum = maximumTotalMinutes(search.baseMinutes, request.timeConstraint);
-  const attempts = [selected];
+  const attempts = [];
+  for (let count = selected.length; count > 0; count -= 1) attempts.push(selected.slice(0, count));
   for (const candidate of [...selected, ...pool.slice(0, 6)]) {
     if (!attempts.some((attempt) => attempt.length === 1 && attempt[0].id === candidate.id)) attempts.push([candidate]);
   }
+  attempts.push([]);
 
   for (const candidates of attempts) {
     const ordered = [...candidates].sort(routeOrder);
-    const route = await compute(request.origin, request.destination, ordered);
-    if (route.durationMinutes <= maximum) return { candidates: ordered, route };
+    const route = ordered.length === 0
+      ? normalSummary(search)
+      : await compute(request.origin, request.destination, ordered);
+    if (ordered.length === 0 || route.durationMinutes <= maximum) return { candidates: ordered, route };
   }
-  throw noCandidates();
+  return { candidates: [], route: normalSummary(search) };
 }
 
 async function publicWaypoint(candidate, deps) {

@@ -29,8 +29,7 @@ Google Mapsの共有URLはExpo側で解析し、このAPIには解析後の`orig
   "timeConstraint": {
     "type": "extra_time",
     "minutes": 30
-  },
-  "waypointCount": 2
+  }
 }
 ```
 
@@ -41,7 +40,6 @@ Google Mapsの共有URLはExpo側で解析し、このAPIには解析後の`orig
 | `preferences` | string[] | yes | 0件以上(空配列はおまかせ)。許可値は下記参照 |
 | `freeText` | string | yes | 未入力は空文字。最大500文字 |
 | `timeConstraint` | object | yes | 下記3形式のいずれか |
-| `waypointCount` | 1 or 2 | yes | 希望する経由地数 |
 
 `preferences`の許可値:
 
@@ -59,6 +57,10 @@ scenic, ocean, night_view, mountain, cafe, gourmet, hot_spring, detour, quiet
 
 `minutes`は1以上の整数とする。`none`は時間上限を指定しないという意味であり、
 バックエンドが内部で仮の60分上限を設定した場合でも、その値をAPI仕様として保証しない。
+
+経由地数はリクエストで固定しない。バックエンドが通常ルートの所要時間、`timeConstraint`、
+候補件数から自動決定し、正確なルート計算で上限を超える場合は件数を減らす。
+条件に合う候補がない場合は`waypoints: []`で通常ルートを返す。
 
 ### Success response
 

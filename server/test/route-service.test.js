@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { editRoutePlan, generateRoutePlan, RouteServiceError } from "../src/route-service.js";
+import { automaticWaypointCount, editRoutePlan, generateRoutePlan, RouteServiceError } from "../src/route-service.js";
 
 const candidates = [
   {
@@ -47,7 +47,6 @@ const generateInput = {
   preferences: ["ocean", "cafe"],
   freeText: "海沿いのカフェ",
   timeConstraint: { type: "extra_time", minutes: 30 },
-  waypointCount: 2,
 };
 
 function dependencies(overrides = {}) {
@@ -87,8 +86,46 @@ test("generateRoutePlan drops to one waypoint when two exceed the time constrain
   assert.equal(result.recommendedRoute.durationMinutes, 58);
 });
 
+test("automaticWaypointCount grows with route length and available time", () => {
+  assert.equal(automaticWaypointCount(20, { type: "none" }, 10), 1);
+  assert.equal(automaticWaypointCount(60, { type: "none" }, 10), 2);
+  assert.equal(automaticWaypointCount(120, { type: "none" }, 10), 3);
+  assert.equal(automaticWaypointCount(240, { type: "none" }, 10), 4);
+  assert.equal(automaticWaypointCount(240, { type: "extra_time", minutes: 30 }, 10), 2);
+});
+
+test("generateRoutePlan can return more than two waypoints for a long route", async () => {
+  const many = [
+    ...candidates,
+    { id: "place-d", name: "道の駅", category: "道の駅", lat: 34.65, lng: 135.1, rating: 4.1, detourMinutes: 12, routeRatio: 0.6 },
+  ];
+  const result = await generateRoutePlan(
+    { ...generateInput, timeConstraint: { type: "none" } },
+    dependencies({
+      search: async () => ({ baseMinutes: 240, distanceKm: 210, candidates: many }),
+      compute: async (_origin, _destination, waypoints) => ({
+        durationMinutes: 240 + waypoints.length * 8,
+        distanceMeters: 210000 + waypoints.length * 1000,
+      }),
+    }),
+  );
+
+  assert.equal(result.waypoints.length, 4);
+});
+
+test("generateRoutePlan returns the normal route when no waypoint candidate is available", async () => {
+  const result = await generateRoutePlan(generateInput, dependencies({
+    search: async () => ({ baseMinutes: 44, distanceKm: 38.7, candidates: [] }),
+  }));
+
+  assert.deepEqual(result.waypoints, []);
+  assert.equal(result.recommendedRoute.durationMinutes, 44);
+  assert.equal(result.recommendedRoute.extraMinutes, 0);
+  assert.doesNotMatch(result.googleMapsUrl, /waypoints=/);
+});
+
 test("generateRoutePlan uses ranked fallback when TypeSafe selection fails", async () => {
-  const result = await generateRoutePlan({ ...generateInput, waypointCount: 1 }, dependencies({
+  const result = await generateRoutePlan({ ...generateInput, timeConstraint: { type: "extra_time", minutes: 15 } }, dependencies({
     pick: async () => { throw new Error("service unavailable"); },
   }));
 
@@ -158,7 +195,7 @@ test("editRoutePlan eliminates candidates similar to the rejected tags", async (
       return { id: pool[0].id, reason: null };
     },
   });
-  const original = await generateRoutePlan({ ...generateInput, waypointCount: 1 }, deps);
+  const original = await generateRoutePlan({ ...generateInput, timeConstraint: { type: "extra_time", minutes: 15 } }, deps);
   const result = await editRoutePlan({
     route: original,
     preferences: [],
@@ -177,7 +214,7 @@ test("editRoutePlan eliminates candidates similar to the rejected tags", async (
 test("editRoutePlan keeps candidates when every one matches the rejected tags", async () => {
   const cafes = candidates.map((candidate) => ({ ...candidate, category: "カフェ" }));
   const deps = dependencies({ search: async () => ({ baseMinutes: 44, distanceKm: 38.7, candidates: cafes }) });
-  const original = await generateRoutePlan({ ...generateInput, waypointCount: 1 }, deps);
+  const original = await generateRoutePlan({ ...generateInput, timeConstraint: { type: "extra_time", minutes: 15 } }, deps);
   const result = await editRoutePlan({
     route: original,
     preferences: [],
@@ -191,7 +228,7 @@ test("editRoutePlan keeps candidates when every one matches the rejected tags", 
 });
 
 test("editRoutePlan rejects badTags that are not strings", async () => {
-  const original = await generateRoutePlan({ ...generateInput, waypointCount: 1 }, dependencies());
+  const original = await generateRoutePlan({ ...generateInput, timeConstraint: { type: "extra_time", minutes: 15 } }, dependencies());
   await assert.rejects(
     () => editRoutePlan({
       route: original,
@@ -212,7 +249,7 @@ test("editRoutePlan passes liked tags to the picker without eliminating anything
       return { id: pool[0].id, reason: null };
     },
   });
-  const original = await generateRoutePlan({ ...generateInput, waypointCount: 1 }, deps);
+  const original = await generateRoutePlan({ ...generateInput, timeConstraint: { type: "extra_time", minutes: 15 } }, deps);
   const result = await editRoutePlan({
     route: original,
     preferences: [],
@@ -226,7 +263,7 @@ test("editRoutePlan passes liked tags to the picker without eliminating anything
 });
 
 test("route responses keep leg minutes and waypoint arrival details", async () => {
-  const result = await generateRoutePlan({ ...generateInput, waypointCount: 1 }, dependencies({
+  const result = await generateRoutePlan({ ...generateInput, timeConstraint: { type: "extra_time", minutes: 15 } }, dependencies({
     compute: async () => ({ durationMinutes: 50, distanceMeters: 40000, legMinutes: [20, 30] }),
   }));
 
