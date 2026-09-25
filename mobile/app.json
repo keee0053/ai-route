@@ -6,6 +6,7 @@
     "orientation": "portrait",
     "scheme": "yorimichi",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon/icon.png",
     "plugins": [
       "expo-router",
       [
@@ -35,6 +36,10 @@
     },
     "android": {
       "package": "app.yorimichi.route",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon/adaptive-foreground.png",
+        "backgroundImage": "./assets/icon/adaptive-background.png"
+      },
       "intentFilters": [
         {
           "action": "VIEW",
