@@ -23,6 +23,21 @@ export const GENRE_QUERIES = {
 /** おまかせ。各ジャンルから1本ずつ */
 export const DEFAULT_QUERIES = ["ランチ", "カフェ", "展望台", "観光スポット", "道の駅"];
 
+/**
+ * 場所の種類。経由地を差し替えるとき、飲食店が公園になったりしないように同じ種類から選ぶのに使う。
+ *   meal: 食事の店 / sweets: カフェ・甘いもの / spot: それ以外(公園・展望台・神社・道の駅など)
+ * 主な種類(primaryType)で決める。types の "food" は、レストランが入っている展望台(神戸ポートタワー)や
+ * 道の駅にも付くので使わない
+ */
+const EATERY = /restaurant|cafe|coffee|tea_house|bistro|brewpub|(^|_)pub$|diner|izakaya|meal_takeaway|meal_delivery|food_court|bakery|deli$|dessert|cake|pastry|confectionery|ice_cream|acai|donut|chocolate|juice|candy|sandwich|bagel|(^|_)bar$|bar_and_grill|brewery|winery|steak_house|sushi|ramen|buffet/;
+const SWEETS = /cafe|coffee|tea_house|dessert|cake|pastry|confectionery|bakery|ice_cream|acai|donut|chocolate|juice|candy/;
+
+export function placeKind(primaryType) {
+  const type = primaryType ?? "";
+  if (!EATERY.test(type)) return "spot";
+  return SWEETS.test(type) ? "sweets" : "meal";
+}
+
 export function queriesForGenre(genre) {
   if (!genre) return DEFAULT_QUERIES;
   return GENRE_QUERIES[genre] ?? DEFAULT_QUERIES;
@@ -131,6 +146,7 @@ export async function searchAlongRoute(key, polyline, queries = DEFAULT_QUERIES,
   const fieldMask = [
     "places.id",
     "places.displayName",
+    "places.primaryType",
     "places.primaryTypeDisplayName",
     "places.location",
     "places.rating",
@@ -197,6 +213,7 @@ function toCandidate(p, routePoints, baseMinutes) {
     id: p.id,
     name: p.displayName?.text ?? "名称不明",
     category: p.primaryTypeDisplayName?.text ?? "",
+    kind: placeKind(p.primaryType),
     lat,
     lng,
     rating: p.rating ?? null,

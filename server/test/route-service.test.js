@@ -234,3 +234,47 @@ test("route responses keep leg minutes and waypoint arrival details", async () =
   assert.equal("stayMinutes" in result.waypoints[0], false);
   assert.ok("priceRange" in result.waypoints[0]);
 });
+
+// 差し替えは同じ種類から。食事の店を替えて公園になっていた(9/25)
+const kindCandidates = [
+  { id: "meal-1", name: "海鮮食堂", category: "和食店", kind: "meal", lat: 34.68, lng: 135.2, rating: 4.5, detourMinutes: 10, routeRatio: 0.4 },
+  { id: "park-1", name: "海辺の公園", category: "公園", kind: "spot", lat: 34.68, lng: 135.19, rating: 4.9, detourMinutes: 8, routeRatio: 0.5 },
+  { id: "meal-2", name: "ラーメン屋", category: "ラーメン屋", kind: "meal", lat: 34.67, lng: 135.18, rating: 4.1, detourMinutes: 12, routeRatio: 0.6 },
+  { id: "cafe-1", name: "港のカフェ", category: "カフェ", kind: "sweets", lat: 34.66, lng: 135.17, rating: 4.7, detourMinutes: 9, routeRatio: 0.7 },
+];
+
+async function replaceFirst(pool, waypoint) {
+  const deps = dependencies({ search: async () => ({ baseMinutes: 44, distanceKm: 38.7, candidates: pool }) });
+  const original = await generateRoutePlan({ ...generateInput, waypointCount: 1 }, deps);
+  const route = { ...original, waypoints: [waypoint(original.waypoints[0])] };
+  return editRoutePlan({
+    route,
+    preferences: [],
+    freeText: "",
+    timeConstraint: { type: "none" },
+    action: { type: "replace", waypointIndex: 0, excludedPlaceIds: [] },
+  }, deps);
+}
+
+test("editRoutePlan replaces a restaurant with a restaurant, not a higher-rated park", async () => {
+  const result = await replaceFirst(kindCandidates, () => ({ ...kindCandidates[0] , placeId: "meal-1" }));
+  assert.equal(result.waypoints[0].placeId, "meal-2");
+  assert.equal(result.waypoints[0].kind, "meal");
+});
+
+test("editRoutePlan looks up the kind from the search when the waypoint has none", async () => {
+  const result = await replaceFirst(kindCandidates, () => ({ placeId: "meal-1", name: "海鮮食堂", lat: 34.68, lng: 135.2 }));
+  assert.equal(result.waypoints[0].placeId, "meal-2");
+});
+
+test("editRoutePlan falls back to another eatery but never to a spot", async () => {
+  const noOtherMeal = kindCandidates.filter((candidate) => candidate.id !== "meal-2");
+  const result = await replaceFirst(noOtherMeal, () => ({ placeId: "meal-1", kind: "meal" }));
+  assert.equal(result.waypoints[0].placeId, "cafe-1");
+
+  const onlySpots = kindCandidates.filter((candidate) => candidate.kind === "spot" || candidate.id === "meal-1");
+  await assert.rejects(
+    () => replaceFirst(onlySpots, () => ({ placeId: "meal-1", kind: "meal" })),
+    (error) => error instanceof RouteServiceError && error.code === "NO_CANDIDATES",
+  );
+});

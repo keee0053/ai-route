@@ -32,6 +32,8 @@ export type RouteWaypoint = {
   lat: number
   lng: number
   category: string | null
+  /** 場所の種類(meal 食事 / sweets カフェ・甘いもの / spot それ以外)。差し替えで同じ種類を選ぶためサーバへそのまま返す */
+  kind?: 'meal' | 'sweets' | 'spot' | null
   rating: number | null
   reviewCount: number | null
   photoUrl: string | null

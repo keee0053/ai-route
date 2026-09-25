@@ -85,8 +85,9 @@ export async function editRoutePlan(input, deps) {
     ...current.waypoints.map((waypoint) => waypoint.placeId),
     ...request.action.excludedPlaceIds,
   ]);
-  const remaining = candidatePool(search.candidates, current.normalRoute.durationMinutes, request.timeConstraint)
+  const unused = candidatePool(search.candidates, current.normalRoute.durationMinutes, request.timeConstraint)
     .filter((candidate) => !excluded.has(candidate.id));
+  const remaining = sameKindCandidates(unused, kindOfWaypoint(current.waypoints[index], search.candidates));
   if (remaining.length === 0) throw noCandidates();
 
   // 消去型: 嫌だった特徴を持つ候補をまとめて外す。全部消えるなら外さず、選ぶときに避けさせるだけにする
@@ -129,6 +130,25 @@ export async function editRoutePlan(input, deps) {
     }),
     eliminatedCount,
   };
+}
+
+/** 差し替える経由地の種類。古い応答には kind が無いので、検索結果から placeId で引く */
+function kindOfWaypoint(waypoint, candidates) {
+  if (waypoint?.kind) return waypoint.kind;
+  return (candidates ?? []).find((candidate) => candidate.id === waypoint?.placeId)?.kind ?? null;
+}
+
+/**
+ * 差し替え先は同じ種類から選ぶ(飲食店を替えたら公園になった、を防ぐ)。
+ * 同じ種類が無ければ、食事⇔カフェのように飲食店どうしまでは広げる。飲食店とそれ以外はまたがない。
+ * 種類が分からないときは絞らない
+ */
+function sameKindCandidates(candidates, kind) {
+  if (!kind) return candidates;
+  const same = candidates.filter((candidate) => candidate.kind === kind);
+  if (same.length > 0) return same;
+  const eatery = (value) => value === "meal" || value === "sweets";
+  return candidates.filter((candidate) => candidate.kind && eatery(candidate.kind) === eatery(kind));
 }
 
 export function validateGenerateRequest(input) {
@@ -271,6 +291,7 @@ async function publicWaypoint(candidate, deps) {
     lat: Number(candidate.lat),
     lng: Number(candidate.lng),
     category: candidate.category || null,
+    kind: candidate.kind ?? null,
     rating: candidate.rating ?? null,
     reviewCount: candidate.reviewCount ?? null,
     photoUrl: candidate.photoUrl ?? (candidate.photoName ? deps.photoUrl(candidate.photoName) : null),
