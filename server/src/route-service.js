@@ -22,7 +22,7 @@ const PREFERENCE_LABELS = {
   quiet: "静かな場所",
 };
 
-const MAX_AUTO_WAYPOINTS = 4;
+const MAX_AUTO_WAYPOINTS = 5;
 
 export class RouteServiceError extends Error {
   constructor(code, message, status = 400) {
@@ -245,26 +245,12 @@ export function maximumTotalMinutes(baseMinutes, constraint) {
   return constraint.minutes;
 }
 
-/** 短い移動で経由地を詰め込まず、長い移動では候補を増やす。時間指定は件数の上限としても使う。 */
+/** 通常ルートが長いほど候補を増やす。時間上限は後段の正確なルート計算で確認する。 */
 export function automaticWaypointCount(baseMinutes, constraint, availableCount) {
-  const byRoute = baseMinutes < 30 ? 1 : baseMinutes < 90 ? 2 : baseMinutes < 180 ? 3 : MAX_AUTO_WAYPOINTS;
-  const availableExtra = constraint.type === "none"
-    ? Number.POSITIVE_INFINITY
-    : constraint.type === "extra_time"
-      ? constraint.minutes
-      : Math.max(0, constraint.minutes - baseMinutes);
-  const byTime = availableExtra === Number.POSITIVE_INFINITY
-    ? MAX_AUTO_WAYPOINTS
-    : availableExtra <= 0
-      ? 0
-      : availableExtra <= 15
-        ? 1
-        : availableExtra <= 45
-          ? 2
-          : availableExtra <= 90
-            ? 3
-            : MAX_AUTO_WAYPOINTS;
-  return Math.max(0, Math.min(MAX_AUTO_WAYPOINTS, byRoute, byTime, availableCount));
+  const byRoute = baseMinutes < 30 ? 2 : baseMinutes < 90 ? 3 : baseMinutes < 180 ? 4 : MAX_AUTO_WAYPOINTS;
+  const maximum = maximumTotalMinutes(baseMinutes, constraint);
+  if (Number.isFinite(maximum) && maximum <= baseMinutes) return 0;
+  return Math.max(0, Math.min(MAX_AUTO_WAYPOINTS, byRoute, availableCount));
 }
 
 export function buildGoogleMapsUrl(origin, destination, waypoints) {
