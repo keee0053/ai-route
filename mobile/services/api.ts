@@ -15,6 +15,9 @@ type ParsedRoute = {
   origin: string
   destination: string
   originIsCurrentLocation: boolean
+  /** 共有 URL に書かれていた地名。サーバが座標で返した地点に付く */
+  originName?: string
+  destinationName?: string
   /** 座標で届いた地点の表示名(「現在地」など)。地名で届いたときは無い */
   originLabel?: string
   destinationLabel?: string
@@ -145,8 +148,8 @@ async function parseSharedRoute(sharedText: string): Promise<ParsedRoute> {
   }
   parsed = {
     ...parsed,
-    originLabel: parsed.originIsCurrentLocation ? '現在地' : await labelForCoordinates(parsed.origin),
-    destinationLabel: await labelForCoordinates(parsed.destination),
+    originLabel: parsed.originIsCurrentLocation ? '現在地' : parsed.originName ?? await labelForCoordinates(parsed.origin),
+    destinationLabel: parsed.destinationName ?? await labelForCoordinates(parsed.destination),
   }
   parsedRoutes.set(text, parsed)
   return parsed
