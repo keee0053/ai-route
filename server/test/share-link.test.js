@@ -118,3 +118,35 @@ test("reads coordinates in the format the phone app shares", () => {
     destinationName: "潤和",
   });
 });
+
+// 作ったばかりの短縮 URL は数秒 404 になる。経路を出した直後に共有すると「展開できません」になっていた(9/25)
+test("retries a fresh short link that is not ready yet", async () => {
+  let calls = 0;
+  const waits = [];
+  const fetchImpl = async () => {
+    calls += 1;
+    return calls < 3
+      ? { status: 404, headers: new Headers() }
+      : { status: 302, headers: new Headers({ location: JUNWA_APP }) };
+  };
+  const result = await parseShareText("https://maps.app.goo.gl/fresh", here, fetchImpl, async (ms) => { waits.push(ms); });
+  assert.equal(calls, 3);
+  assert.deepEqual(waits, [1000, 2000]);
+  assert.equal(result.destinationName, "潤和");
+});
+
+test("gives up on a short link that never redirects", async () => {
+  let calls = 0;
+  const fetchImpl = async () => { calls += 1; return { status: 404, headers: new Headers() }; };
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    await assert.rejects(
+      () => parseShareText("https://maps.app.goo.gl/missing", here, fetchImpl, async () => {}),
+      (error) => error.code === "MAPS_URL_PARSE_FAILED",
+    );
+  } finally {
+    console.warn = warn;
+  }
+  assert.equal(calls, 5);
+});
