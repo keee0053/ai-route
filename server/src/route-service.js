@@ -23,7 +23,7 @@ const PREFERENCE_LABELS = {
 };
 
 const MAX_AUTO_WAYPOINTS = 5;
-const MAX_GENERATED_WAYPOINTS = 7;
+const MAX_GENERATED_WAYPOINTS = 9;
 const MINIMUM_TIME_USAGE_RATIO = 0.6;
 
 export class RouteServiceError extends Error {
@@ -41,11 +41,12 @@ export async function generateRoutePlan(input, deps) {
   const pool = candidatePool(search.candidates, search.baseMinutes, request.timeConstraint);
 
   const count = automaticWaypointCount(search.baseMinutes, request.timeConstraint, pool.length);
+  const waypointLimit = maximumGeneratedWaypointCount(search.baseMinutes, request.timeConstraint);
   const pickCount = count === 0 || request.timeConstraint.type === "none"
     ? count
-    : Math.min(MAX_GENERATED_WAYPOINTS, pool.length);
+    : Math.min(waypointLimit, pool.length);
   const picked = await pickWaypoints(pool, pickCount, requestText(request), deps.pick);
-  const fitted = await fitGeneratedRoute(request, search, count, picked.candidates, deps.compute);
+  const fitted = await fitGeneratedRoute(request, search, count, waypointLimit, picked.candidates, deps.compute);
   const waypoints = await Promise.all(fitted.candidates.map((candidate) => publicWaypoint(candidate, deps)));
 
   return routeResponse({
@@ -219,7 +220,19 @@ export function automaticWaypointCount(baseMinutes, constraint, availableCount) 
   const byRoute = baseMinutes < 30 ? 2 : baseMinutes < 90 ? 3 : baseMinutes < 180 ? 4 : MAX_AUTO_WAYPOINTS;
   const maximum = maximumTotalMinutes(baseMinutes, constraint);
   if (Number.isFinite(maximum) && maximum <= baseMinutes) return 0;
-  return Math.max(0, Math.min(MAX_AUTO_WAYPOINTS, byRoute, availableCount));
+  return Math.max(0, Math.min(byRoute, maximumGeneratedWaypointCount(baseMinutes, constraint), availableCount));
+}
+
+export function maximumGeneratedWaypointCount(baseMinutes, constraint) {
+  if (constraint.type === "none") return MAX_AUTO_WAYPOINTS;
+  const extraMinutes = constraint.type === "extra_time"
+    ? constraint.minutes
+    : Math.max(0, constraint.minutes - baseMinutes);
+  if (extraMinutes <= 0) return 0;
+  if (extraMinutes <= 15) return 3;
+  if (extraMinutes <= 30) return 5;
+  if (extraMinutes <= 60) return 7;
+  return MAX_GENERATED_WAYPOINTS;
 }
 
 export function buildGoogleMapsUrl(origin, destination, waypoints) {
@@ -258,7 +271,7 @@ async function safePick(candidates, text, pick, feedback = {}) {
   }
 }
 
-async function fitGeneratedRoute(request, search, initialCount, ranked, compute) {
+async function fitGeneratedRoute(request, search, initialCount, waypointLimit, ranked, compute) {
   const maximum = maximumTotalMinutes(search.baseMinutes, request.timeConstraint);
   const minimum = minimumPreferredTotalMinutes(search.baseMinutes, request.timeConstraint);
   let count = Math.min(initialCount, ranked.length);
@@ -281,10 +294,10 @@ async function fitGeneratedRoute(request, search, initialCount, ranked, compute)
   if (request.timeConstraint.type === "none" || fitted.route.durationMinutes >= minimum) return fitted;
 
   // 指定時間の60%に届くまで未使用候補を1件ずつ追加。
-  // 100%を超える候補は飛ばし、最大7件で止める。
+  // 100%を超える候補は飛ばし、指定時間別の上限で止める。
   const used = new Set(fitted.candidates.map((candidate) => candidate.id));
   for (const candidate of ranked) {
-    if (fitted.candidates.length >= MAX_GENERATED_WAYPOINTS) break;
+    if (fitted.candidates.length >= waypointLimit) break;
     if (used.has(candidate.id)) continue;
     const proposed = [...fitted.candidates, candidate].sort(routeOrder);
     const route = await compute(request.origin, request.destination, proposed);

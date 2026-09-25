@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { automaticWaypointCount, editRoutePlan, generateRoutePlan, RouteServiceError } from "../src/route-service.js";
+import {
+  automaticWaypointCount,
+  editRoutePlan,
+  generateRoutePlan,
+  maximumGeneratedWaypointCount,
+  RouteServiceError,
+} from "../src/route-service.js";
 
 const candidates = [
   {
@@ -92,6 +98,17 @@ test("automaticWaypointCount grows from two to five with route length", () => {
   assert.equal(automaticWaypointCount(120, { type: "none" }, 10), 4);
   assert.equal(automaticWaypointCount(240, { type: "none" }, 10), 5);
   assert.equal(automaticWaypointCount(240, { type: "total_time", minutes: 240 }, 10), 0);
+});
+
+test("maximumGeneratedWaypointCount follows the requested extra-time bands", () => {
+  assert.equal(maximumGeneratedWaypointCount(60, { type: "extra_time", minutes: 15 }), 3);
+  assert.equal(maximumGeneratedWaypointCount(60, { type: "extra_time", minutes: 16 }), 5);
+  assert.equal(maximumGeneratedWaypointCount(60, { type: "extra_time", minutes: 30 }), 5);
+  assert.equal(maximumGeneratedWaypointCount(60, { type: "extra_time", minutes: 31 }), 7);
+  assert.equal(maximumGeneratedWaypointCount(60, { type: "extra_time", minutes: 60 }), 7);
+  assert.equal(maximumGeneratedWaypointCount(60, { type: "extra_time", minutes: 61 }), 9);
+  assert.equal(maximumGeneratedWaypointCount(60, { type: "total_time", minutes: 180 }), 9);
+  assert.equal(maximumGeneratedWaypointCount(60, { type: "none" }), 5);
 });
 
 test("generateRoutePlan adds waypoints until it uses at least 60 percent of the requested extra time", async () => {
