@@ -163,18 +163,26 @@ test("editRoutePlan replaces a waypoint and excludes already shown candidates", 
 });
 
 test("editRoutePlan adds an unused waypoint and recalculates the route", async () => {
-  const original = await generateRoutePlan(generateInput, dependencies());
+  const input = { ...generateInput, timeConstraint: { type: "none" } };
+  const available = [
+    ...candidates,
+    { id: "place-d", name: "道の駅", category: "道の駅", lat: 34.65, lng: 135.1, rating: 4.0, detourMinutes: 12, routeRatio: 0.9 },
+  ];
+  const deps = dependencies({
+    search: async () => ({ baseMinutes: 44, distanceKm: 38.7, candidates: available }),
+  });
+  const original = await generateRoutePlan(input, deps);
   const result = await editRoutePlan({
     route: original,
-    preferences: generateInput.preferences,
-    freeText: generateInput.freeText,
-    timeConstraint: generateInput.timeConstraint,
+    preferences: input.preferences,
+    freeText: input.freeText,
+    timeConstraint: input.timeConstraint,
     action: { type: "add" },
-  }, dependencies());
+  }, deps);
 
-  assert.deepEqual(result.waypoints.map((waypoint) => waypoint.placeId), ["place-a", "place-b", "place-c"]);
-  assert.equal(result.recommendedRoute.durationMinutes, 71);
-  assert.match(result.googleMapsUrl, /34\.68%2C135\.2%7C34\.67%2C135\.18%7C34\.69%2C135\.16/);
+  assert.deepEqual(result.waypoints.map((waypoint) => waypoint.placeId), ["place-a", "place-b", "place-c", "place-d"]);
+  assert.equal(result.recommendedRoute.durationMinutes, 80);
+  assert.match(result.googleMapsUrl, /34\.68%2C135\.2%7C34\.67%2C135\.18%7C34\.69%2C135\.16%7C34\.65%2C135\.1/);
 });
 
 test("editRoutePlan refuses to add a waypoint outside the time constraint", async () => {
