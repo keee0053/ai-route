@@ -99,8 +99,10 @@ export function routeFromUrl(url) {
 }
 
 /**
- * data=!4m..!4m..!1m5!1m1!1s<id>!2m2!1d<lng>!2d<lat>!1m0... から地点ごとの座標を取る(座標が無い地点は null)。
- * !<番号><型><値> の並びで、型 m の値はその下に続く要素の数。現在地は !1m0。
+ * data=!4m..!4m..!1m..!1m.. から地点ごとの座標を取る(座標が無い地点は null)。
+ * !<番号><型><値> の並びで、型 m の値はその下に続く要素の数。地点の書き方は2通りある:
+ *   ブラウザ:       !1m5!1m1!1s<id>!2m2!1d<経度>!2d<緯度>   現在地は !1m0
+ *   スマホのアプリ: !1m5!1m4!1s<id>!8m2!3d<緯度>!4d<経度>   現在地は !1m1!4e1
  */
 function placeCoordinates(pathname) {
   const data = pathname.split("/").find((segment) => segment.startsWith("data="));
@@ -111,12 +113,20 @@ function placeCoordinates(pathname) {
   return list.children
     .filter((node) => node.key === "1m")
     .map((place) => {
-      const point = place.children.find((node) => node.key === "2m");
-      if (!point) return null;
-      const lng = Number(point.children.find((node) => node.key === "1d")?.value);
-      const lat = Number(point.children.find((node) => node.key === "2d")?.value);
-      return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+      // スマホの形にも !2m1!11b1 のような座標でない 2m が付くので、座標が読めた方を使う
+      const browser = place.children.filter((node) => node.key === "2m").map((node) => latLng(node, "2d", "1d"));
+      const app = place.children
+        .filter((node) => node.key === "1m")
+        .flatMap((node) => node.children.filter((child) => child.key === "8m"))
+        .map((node) => latLng(node, "3d", "4d"));
+      return [...browser, ...app].find(Boolean) ?? null;
     });
+}
+
+function latLng(point, latKey, lngKey) {
+  const lat = Number(point.children.find((node) => node.key === latKey)?.value);
+  const lng = Number(point.children.find((node) => node.key === lngKey)?.value);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
 }
 
 function parseDataTokens(tokens) {

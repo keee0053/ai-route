@@ -106,3 +106,15 @@ test("does not use a coordinate origin as a display name", () => {
   const href = "https://www.google.com/maps/dir/34.70,135.49/Kobe/@1,2,3z/data=!4m9!4m8!1m1!4e1!1m5!1m1!1s0x1:0x1!2m2!1d135.1!2d34.1";
   assert.deepEqual(route(href), { origin: "34.70,135.49", destination: "34.1,135.1", destinationName: "Kobe" });
 });
+
+// スマホの Google マップが共有した URL(9/25・maps.app.goo.gl/xGSfhNtD3P4x7EoDA を展開したもの)。
+// 座標は !8m2!3d<緯度>!4d<経度>、現在地は !1m1!4e1。目的地には座標でない !2m1!11b1 も付く
+const JUNWA_APP = "https://www.google.com/maps/dir/34.6795306,135.1602129/%E6%BD%A4%E5%92%8C/data=!4m12!4m11!1m1!4e1!1m5!1m4!1s0x60008028721a5123:0x8e1daf7dcf31bc04!8m2!3d34.6662708!4d135.0011657!2m1!11b1!3e0?utm_source=mstt_0";
+
+test("reads coordinates in the format the phone app shares", () => {
+  assert.deepEqual(route(JUNWA_APP), {
+    origin: "34.6795306,135.1602129",
+    destination: "34.6662708,135.0011657",
+    destinationName: "潤和",
+  });
+});
