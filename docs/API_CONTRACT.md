@@ -124,8 +124,23 @@ TypeScript上の正本は`mobile/types/route.ts`の`GenerateRouteRequest`と
 
 ## POST /edit-route
 
-生成済みルートの経由地を変更または削除し、Routes APIで所要時間と距離を再計算する。
+生成済みルートの経由地を追加・変更・削除し、Routes APIで所要時間と距離を再計算する。
 レスポンスは`POST /generate-route`と同じ`GenerateRouteResponse`。
+
+### Add request
+
+```json
+{
+  "route": { "...": "POST /generate-routeのレスポンス全体" },
+  "preferences": ["ocean", "cafe"],
+  "freeText": "海沿いのカフェ",
+  "timeConstraint": { "type": "extra_time", "minutes": 30 },
+  "action": { "type": "add" }
+}
+```
+
+サーバーは現在の全経由地を除外し、希望と時間条件に合う候補を1件追加して
+経由順に並べ直す。時間内に収まる候補がなければ`NO_CANDIDATES`を返す。
 
 ### Replace request
 
@@ -211,5 +226,5 @@ Expo側でのみ発生するエラーは次のコードで管理する。
 当面維持する。Expo版は`POST /generate-route`完成後、ルート生成時に既存3 APIを
 個別に呼ばず`POST /generate-route`だけを呼ぶ。
 
-Expo版はルート生成に`POST /generate-route`、経由地の変更・削除に
+Expo版はルート生成に`POST /generate-route`、経由地の追加・変更・削除に
 `POST /edit-route`を使う。既存エンドポイントは旧クライアントとの互換性のため維持する。
