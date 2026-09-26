@@ -1,4 +1,4 @@
-import { computeRoute, searchAlongRoute, proxyPhoto, queriesForGenre } from "./google.js";
+import { computeRoute, findPlace, searchAlongRoute, proxyPhoto, queriesForGenre } from "./google.js";
 import { pickNext, tagWithJev } from "./jev.js";
 import { generateTags, fallbackTags } from "./gemini.js";
 import { editRoutePlan, generateRoutePlan, RouteServiceError } from "./route-service.js";
@@ -11,7 +11,7 @@ const GEMINI_TAG_WAIT_MS = 800;
 const LATE_TAG_WAIT_MS = 3000;
 
 // Bump this when the shape or filtering of cached data changes.
-const CACHE_VERSION = "v5";
+const CACHE_VERSION = "v7";
 const GOOGLE_TRAVEL_MODES = {
   driving: "DRIVE",
   walking: "WALK",
@@ -50,7 +50,7 @@ export default {
           });
 
         case "POST /parse-share":
-          return await handleParseShare(request);
+          return await handleParseShare(request, env);
 
         case "POST /generate-route":
           return await handleGenerateRoute(request, env, ctx);
@@ -95,14 +95,15 @@ export default {
   },
 };
 
-async function handleParseShare(request) {
+async function handleParseShare(request, env) {
   const body = await readJson(request);
   const current = body.current;
   const hasCurrent = current && Number.isFinite(current.lat) && Number.isFinite(current.lng);
   if (current != null && !hasCurrent) {
     throw new RouteServiceError("INVALID_REQUEST", "currentは{lat,lng}で指定してください。", 400);
   }
-  return json(await parseShareText(body.text, hasCurrent ? current : null));
+  const resolvePlace = (query, near) => findPlace(env.GOOGLE_MAPS_SERVER_KEY, query, near);
+  return json(await parseShareText(body.text, hasCurrent ? current : null, fetch, undefined, resolvePlace));
 }
 
 async function handleGenerateRoute(request, env, ctx) {
