@@ -379,7 +379,7 @@ async function fitGeneratedRoute(request, search, initialCount, waypointLimit, r
   for (const candidate of economical) {
     if (alternative.candidates.length >= waypointLimit) break;
     const proposed = [...alternative.candidates, candidate].sort(routeOrder);
-    const route = await compute(request.origin, request.destination, proposed);
+    const route = await compute(request.origin, request.destination, proposed, request.travelMode);
     if (route.durationMinutes > maximum) continue;
     alternative = { candidates: proposed, route };
     if (route.durationMinutes >= minimum) break;
