@@ -45,6 +45,7 @@ export default function ResultScreen() {
         preferences: routeState.preferences,
         freeText: routeState.freeText,
         timeConstraint: routeState.timeConstraint,
+        travelMode: route.travelMode,
         action: { type: 'add' },
       }))
     } catch (caught) {
@@ -102,6 +103,7 @@ export default function ResultScreen() {
               origin={route.origin}
               destination={route.destination}
               waypoints={route.waypoints}
+              travelMode={route.travelMode}
               height={HERO_HEIGHT - SHEET_OVERLAP}
               style={{ width, marginBottom: SHEET_OVERLAP }}
               fallback={<View style={[StyleSheet.absoluteFill, styles.noPhoto, styles.noWaypoint]}><Text style={styles.noWaypointText}>{count > 0 ? '地図を読み込み中…' : '寄り道なしのルートです'}</Text></View>}
@@ -123,7 +125,8 @@ export default function ResultScreen() {
           <View style={styles.summary}>
             <Text style={styles.duration}>{formatDuration(route.recommendedRoute.durationMinutes)}</Text>
             <Text style={styles.extra}>+{route.recommendedRoute.extraMinutes}分</Text>
-            <Text style={styles.muted}>通常 {formatDuration(route.normalRoute.durationMinutes)}・{(route.recommendedRoute.distanceMeters / 1000).toFixed(1)} km</Text>
+            <Text style={styles.muted}>{travelModeLabel(route.travelMode)}・通常 {formatDuration(route.normalRoute.durationMinutes)}・{(route.recommendedRoute.distanceMeters / 1000).toFixed(1)} km</Text>
+            {route.travelMode !== 'driving' ? <Text style={styles.modeWarning}>歩道や自転車道がルートに正確に反映されていない場合があります。</Text> : null}
           </View>
 
           <View>
@@ -192,6 +195,12 @@ function navigationUrl(route: { googleMapsUrl: string; origin: { name: string } 
   return route.googleMapsUrl.replace(/([?&])origin=[^&]*&?/, '$1').replace(/[?&]$/, '')
 }
 
+function travelModeLabel(mode: 'driving' | 'walking' | 'bicycling') {
+  if (mode === 'walking') return '徒歩'
+  if (mode === 'bicycling') return '自転車'
+  return '車'
+}
+
 type TimelineRowProps = {
   kind: 'start' | 'waypoint' | 'end'
   title: string
@@ -248,6 +257,7 @@ const styles = StyleSheet.create({
   duration: { color: colors.ink, fontSize: 30, fontWeight: '800' },
   extra: { color: colors.warning, backgroundColor: colors.warningSoft, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 3, fontSize: 12, fontWeight: '700', overflow: 'hidden' },
   muted: { color: colors.faint, fontSize: 13 },
+  modeWarning: { width: '100%', color: colors.faint, fontSize: 11, lineHeight: 16 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56 },
   rail: { width: 26, alignItems: 'center', alignSelf: 'stretch' },
   railLine: { flex: 1, width: 2, backgroundColor: '#CBD5E1' },

@@ -23,6 +23,18 @@ export const GENRE_QUERIES = {
 /** おまかせ。各ジャンルから1本ずつ */
 export const DEFAULT_QUERIES = ["ランチ", "カフェ", "展望台", "観光スポット", "道の駅"];
 
+const MODE_DEFAULT_QUERIES = {
+  DRIVE: DEFAULT_QUERIES,
+  BICYCLE: ["カフェ", "公園", "展望台", "観光スポット", "サイクルステーション"],
+  WALK: ["カフェ", "ベーカリー", "公園", "観光スポット", "神社"],
+};
+
+const TRAVEL_SPEED_KMH = {
+  DRIVE: 40,
+  BICYCLE: 15,
+  WALK: 4.8,
+};
+
 /**
  * 場所の種類。経由地を差し替えるとき、飲食店が公園になったりしないように同じ種類から選ぶのに使う。
  *   meal: 食事の店 / sweets: カフェ・甘いもの / spot: それ以外(公園・展望台・神社・道の駅など)
@@ -38,8 +50,10 @@ export function placeKind(primaryType) {
   return SWEETS.test(type) ? "sweets" : "meal";
 }
 
-export function queriesForGenre(genre) {
-  if (!genre) return DEFAULT_QUERIES;
+export function queriesForGenre(genre, travelMode = "DRIVE") {
+  if (!genre) return MODE_DEFAULT_QUERIES[travelMode] ?? DEFAULT_QUERIES;
+  if (genre === "rest" && travelMode === "WALK") return ["公園", "カフェ", "銭湯", "休憩スポット"];
+  if (genre === "rest" && travelMode === "BICYCLE") return ["公園", "カフェ", "道の駅", "サイクルステーション"];
   return GENRE_QUERIES[genre] ?? DEFAULT_QUERIES;
 }
 
@@ -142,7 +156,7 @@ function isWorthStopping(c) {
   return c.reviewCount >= 30 && c.rating >= 3.8;
 }
 
-export async function searchAlongRoute(key, polyline, queries = DEFAULT_QUERIES, baseMinutes = 0) {
+export async function searchAlongRoute(key, polyline, queries = DEFAULT_QUERIES, baseMinutes = 0, travelMode = "DRIVE") {
   const fieldMask = [
     "places.id",
     "places.displayName",
@@ -182,7 +196,7 @@ export async function searchAlongRoute(key, polyline, queries = DEFAULT_QUERIES,
   for (const body of responses) {
     for (const p of body.places ?? []) {
       if (byId.has(p.id)) continue;
-      byId.set(p.id, toCandidate(p, points, baseMinutes));
+      byId.set(p.id, toCandidate(p, points, baseMinutes, travelMode));
     }
   }
 
@@ -200,14 +214,15 @@ export async function searchAlongRoute(key, polyline, queries = DEFAULT_QUERIES,
   };
 }
 
-function toCandidate(p, routePoints, baseMinutes) {
+function toCandidate(p, routePoints, baseMinutes, travelMode) {
   const lat = p.location?.latitude;
   const lng = p.location?.longitude;
   const near = lat != null ? nearestOnRoute(routePoints, lat, lng) : { km: 0, ratio: 0 };
   const off = near.km;
 
   // その経由地に着くまでの時間。ルート上の到達位置 + ルートから外れる分
-  const minutesToArrive = Math.round(baseMinutes * near.ratio + (off / 40) * 60);
+  const speedKmh = TRAVEL_SPEED_KMH[travelMode] ?? TRAVEL_SPEED_KMH.DRIVE;
+  const minutesToArrive = Math.round(baseMinutes * near.ratio + (off / speedKmh) * 60);
 
   return {
     id: p.id,
@@ -221,7 +236,7 @@ function toCandidate(p, routePoints, baseMinutes) {
     priceRange: formatPriceRange(p.priceRange, p.priceLevel),
     photoName: p.photos?.[0]?.name ?? null,
     reviews: (p.reviews ?? []).map((r) => r.text?.text).filter(Boolean).slice(0, 3),
-    detourMinutes: estimateDetourMinutes(off),
+    detourMinutes: estimateDetourMinutes(off, speedKmh),
     minutesToArrive,
     // ルート全体のどこにある候補か(0〜1)。現在地からの時間をアプリ側で出すのに使う
     routeRatio: +near.ratio.toFixed(4),

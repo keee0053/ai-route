@@ -67,6 +67,7 @@ export default function EditScreen() {
     try {
       const updated = await editRoute({
         route: result,
+        travelMode: result.travelMode,
         preferences,
         freeText,
         timeConstraint,
@@ -106,7 +107,7 @@ export default function EditScreen() {
         onPress: async () => {
           setLoading(true)
           try {
-            updateResult(await editRoute({ route: result, preferences, freeText, timeConstraint, action: { type: 'delete', waypointIndex: index } }))
+            updateResult(await editRoute({ route: result, preferences, freeText, timeConstraint, travelMode: result.travelMode, action: { type: 'delete', waypointIndex: index } }))
             router.back()
           } catch (caught) {
             setError(caught instanceof Error ? caught.message : '経由地を外せませんでした。')

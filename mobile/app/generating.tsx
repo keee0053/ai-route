@@ -12,7 +12,7 @@ const steps = ['希望を分析中', 'ルート周辺を検索中', '寄り道�
 export default function GeneratingScreen() {
   const [activeStep, setActiveStep] = useState(0)
   const [attempt, setAttempt] = useState(0)
-  const { createRoute, error, clearError, routeLoading, preview } = useRoute()
+  const { createRoute, error, clearError, routeLoading, preview, travelMode } = useRoute()
 
   useEffect(() => {
     let mounted = true
@@ -44,7 +44,7 @@ export default function GeneratingScreen() {
       <View style={styles.mapBackdrop}>
         {preview ? (
           // 探している経路を本物の地図で見せる(取れなければ飾り)
-          <RouteMap origin={preview.origin} destination={preview.destination} height={520} fallback={<Decoration />} />
+          <RouteMap origin={preview.origin} destination={preview.destination} travelMode={travelMode} height={520} fallback={<Decoration />} />
         ) : <Decoration />}
       </View>
       <View style={styles.panel}>

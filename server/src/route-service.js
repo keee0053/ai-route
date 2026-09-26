@@ -22,9 +22,26 @@ const PREFERENCE_LABELS = {
   quiet: "静かな場所",
 };
 
-const MAX_AUTO_WAYPOINTS = 5;
-const MAX_GENERATED_WAYPOINTS = 9;
 const MINIMUM_TIME_USAGE_RATIO = 0.6;
+const TRAVEL_MODES = new Set(["driving", "walking", "bicycling"]);
+
+const MODE_PROFILES = {
+  driving: {
+    maxOffRouteKm: 6,
+    initialWaypoints: (minutes) => minutes < 30 ? 2 : minutes < 90 ? 3 : minutes < 180 ? 4 : 5,
+    maximumWaypoints: (extraMinutes) => extraMinutes <= 15 ? 3 : extraMinutes <= 30 ? 5 : extraMinutes <= 60 ? 7 : 9,
+  },
+  bicycling: {
+    maxOffRouteKm: 2,
+    initialWaypoints: (minutes) => minutes < 30 ? 1 : minutes < 90 ? 2 : minutes < 180 ? 3 : 4,
+    maximumWaypoints: (extraMinutes) => extraMinutes <= 15 ? 2 : extraMinutes <= 30 ? 3 : extraMinutes <= 60 ? 5 : 7,
+  },
+  walking: {
+    maxOffRouteKm: 0.8,
+    initialWaypoints: (minutes) => minutes < 45 ? 1 : minutes < 120 ? 2 : minutes < 240 ? 3 : 4,
+    maximumWaypoints: (extraMinutes) => extraMinutes <= 15 ? 1 : extraMinutes <= 30 ? 2 : extraMinutes <= 60 ? 3 : 5,
+  },
+};
 
 export class RouteServiceError extends Error {
   constructor(code, message, status = 400) {
@@ -37,11 +54,11 @@ export class RouteServiceError extends Error {
 
 export async function generateRoutePlan(input, deps) {
   const request = validateGenerateRequest(input);
-  const search = await deps.search(request.origin, request.destination, genreForPreferences(request.preferences));
-  const pool = candidatePool(search.candidates, search.baseMinutes, request.timeConstraint);
+  const search = await deps.search(request.origin, request.destination, genreForPreferences(request.preferences), request.travelMode);
+  const pool = candidatePool(search.candidates, search.baseMinutes, request.timeConstraint, request.travelMode);
 
-  const count = automaticWaypointCount(search.baseMinutes, request.timeConstraint, pool.length);
-  const waypointLimit = maximumGeneratedWaypointCount(search.baseMinutes, request.timeConstraint);
+  const count = automaticWaypointCount(search.baseMinutes, request.timeConstraint, pool.length, request.travelMode);
+  const waypointLimit = maximumGeneratedWaypointCount(search.baseMinutes, request.timeConstraint, request.travelMode);
   const pickCount = count === 0 || request.timeConstraint.type === "none"
     ? count
     : Math.min(waypointLimit, pool.length);
@@ -58,6 +75,7 @@ export async function generateRoutePlan(input, deps) {
     reason: picked.reason || (waypoints.length > 0
       ? defaultReason(request.preferences)
       : "条件に合う寄り道候補がなかったため、通常ルートにしました。"),
+    travelMode: request.travelMode,
     mapsOrigin: request.origin,
     mapsDestination: request.destination,
   });
@@ -71,12 +89,12 @@ export async function editRoutePlan(input, deps) {
   if (request.action.type === "add") {
     const origin = endpointValue(current.origin);
     const destination = endpointValue(current.destination);
-    const search = await deps.search(origin, destination, genreForPreferences(request.preferences));
+    const search = await deps.search(origin, destination, genreForPreferences(request.preferences), request.travelMode);
     const excluded = new Set([
       ...current.waypoints.map((waypoint) => waypoint.placeId),
       ...request.action.excludedPlaceIds,
     ]);
-    const pool = candidatePool(search.candidates, current.normalRoute.durationMinutes, request.timeConstraint)
+    const pool = candidatePool(search.candidates, current.normalRoute.durationMinutes, request.timeConstraint, request.travelMode)
       .filter((candidate) => !excluded.has(candidate.id));
     if (pool.length === 0) throw noCandidates();
 
@@ -88,7 +106,7 @@ export async function editRoutePlan(input, deps) {
 
     for (const candidate of ordered.slice(0, 8)) {
       const proposed = [...current.waypoints, candidate].sort(routeOrder);
-      const exact = await deps.compute(origin, destination, proposed);
+      const exact = await deps.compute(origin, destination, proposed, request.travelMode);
       if (exact.durationMinutes > maximum) continue;
       const added = await publicWaypoint(candidate, deps);
       const waypoints = proposed.map((waypoint) => waypoint === candidate ? added : waypoint);
@@ -97,6 +115,7 @@ export async function editRoutePlan(input, deps) {
         recommendedRoute: exact,
         waypoints,
         reason: picked.reason || `${candidate.name}を経由地に追加しました。`,
+        travelMode: request.travelMode,
         mapsOrigin: origin,
         mapsDestination: destination,
       });
@@ -112,6 +131,7 @@ export async function editRoutePlan(input, deps) {
         endpointValue(current.origin),
         endpointValue(current.destination),
         waypoints,
+        request.travelMode,
       );
 
     return routeResponse({
@@ -119,6 +139,7 @@ export async function editRoutePlan(input, deps) {
       recommendedRoute: recommended,
       waypoints,
       reason: `${current.waypoints[index].name}を外し、ルートを再計算しました。`,
+      travelMode: request.travelMode,
       mapsOrigin: endpointValue(current.origin),
       mapsDestination: endpointValue(current.destination),
     });
@@ -126,12 +147,12 @@ export async function editRoutePlan(input, deps) {
 
   const origin = endpointValue(current.origin);
   const destination = endpointValue(current.destination);
-  const search = await deps.search(origin, destination, genreForPreferences(request.preferences));
+  const search = await deps.search(origin, destination, genreForPreferences(request.preferences), request.travelMode);
   const excluded = new Set([
     ...current.waypoints.map((waypoint) => waypoint.placeId),
     ...request.action.excludedPlaceIds,
   ]);
-  const unused = candidatePool(search.candidates, current.normalRoute.durationMinutes, request.timeConstraint)
+  const unused = candidatePool(search.candidates, current.normalRoute.durationMinutes, request.timeConstraint, request.travelMode)
     .filter((candidate) => !excluded.has(candidate.id));
   const remaining = sameKindCandidates(unused, kindOfWaypoint(current.waypoints[index], search.candidates));
   if (remaining.length === 0) throw noCandidates();
@@ -153,7 +174,7 @@ export async function editRoutePlan(input, deps) {
   for (const candidate of ordered.slice(0, 8)) {
     const proposed = [...current.waypoints];
     proposed[index] = candidate;
-    const exact = await deps.compute(origin, destination, proposed);
+    const exact = await deps.compute(origin, destination, proposed, request.travelMode);
     if (exact.durationMinutes <= maxMinutes) {
       replacement = candidate;
       recommended = exact;
@@ -171,6 +192,7 @@ export async function editRoutePlan(input, deps) {
       recommendedRoute: recommended,
       waypoints,
       reason: picked.reason || `${replacement.name}へ立ち寄るルートに更新しました。`,
+      travelMode: request.travelMode,
       mapsOrigin: origin,
       mapsDestination: destination,
     }),
@@ -204,7 +226,8 @@ export function validateGenerateRequest(input) {
   const preferences = validatePreferences(input.preferences);
   const freeText = typeof input.freeText === "string" ? input.freeText.trim().slice(0, 500) : "";
   const timeConstraint = validateTimeConstraint(input.timeConstraint);
-  return { origin, destination, preferences, freeText, timeConstraint };
+  const travelMode = validateTravelMode(input.travelMode ?? "driving");
+  return { origin, destination, preferences, freeText, timeConstraint, travelMode };
 }
 
 export function validateEditRequest(input) {
@@ -225,6 +248,7 @@ export function validateEditRequest(input) {
     preferences: validatePreferences(input.preferences),
     freeText: typeof input.freeText === "string" ? input.freeText.trim().slice(0, 500) : "",
     timeConstraint: validateTimeConstraint(input.timeConstraint),
+    travelMode: validateTravelMode(input.travelMode ?? route.travelMode),
     action: {
       type: action.type,
       waypointIndex: action.type === "add" ? undefined : action.waypointIndex,
@@ -245,15 +269,16 @@ export function genreForPreferences(preferences) {
   return undefined;
 }
 
-export function candidatePool(candidates, baseMinutes, constraint) {
+export function candidatePool(candidates, baseMinutes, constraint, travelMode = "driving") {
   const maximum = maximumExtraMinutes(baseMinutes, constraint);
+  const profile = MODE_PROFILES[travelMode] ?? MODE_PROFILES.driving;
   return [...(candidates ?? [])]
     .filter((candidate) => Number.isFinite(candidate.lat) && Number.isFinite(candidate.lng))
     .filter((candidate) => {
       const ratio = candidate.routeRatio ?? 0.5;
       return ratio >= 0.08
         && ratio <= 0.96
-        && (candidate.offRouteKm ?? 0) <= 6
+        && (candidate.offRouteKm ?? 0) <= profile.maxOffRouteKm
         && (candidate.detourMinutes ?? 0) <= maximum;
     })
     .sort((a, b) => {
@@ -272,27 +297,26 @@ export function maximumTotalMinutes(baseMinutes, constraint) {
 }
 
 /** 通常ルートが長いほど候補を増やす。時間上限は後段の正確なルート計算で確認する。 */
-export function automaticWaypointCount(baseMinutes, constraint, availableCount) {
-  const byRoute = baseMinutes < 30 ? 2 : baseMinutes < 90 ? 3 : baseMinutes < 180 ? 4 : MAX_AUTO_WAYPOINTS;
+export function automaticWaypointCount(baseMinutes, constraint, availableCount, travelMode = "driving") {
+  const profile = MODE_PROFILES[travelMode] ?? MODE_PROFILES.driving;
+  const byRoute = profile.initialWaypoints(baseMinutes);
   const maximum = maximumTotalMinutes(baseMinutes, constraint);
   if (Number.isFinite(maximum) && maximum <= baseMinutes) return 0;
-  return Math.max(0, Math.min(byRoute, maximumGeneratedWaypointCount(baseMinutes, constraint), availableCount));
+  return Math.max(0, Math.min(byRoute, maximumGeneratedWaypointCount(baseMinutes, constraint, travelMode), availableCount));
 }
 
-export function maximumGeneratedWaypointCount(baseMinutes, constraint) {
-  if (constraint.type === "none") return MAX_AUTO_WAYPOINTS;
+export function maximumGeneratedWaypointCount(baseMinutes, constraint, travelMode = "driving") {
+  const profile = MODE_PROFILES[travelMode] ?? MODE_PROFILES.driving;
+  if (constraint.type === "none") return profile.initialWaypoints(Number.POSITIVE_INFINITY);
   const extraMinutes = constraint.type === "extra_time"
     ? constraint.minutes
     : Math.max(0, constraint.minutes - baseMinutes);
   if (extraMinutes <= 0) return 0;
-  if (extraMinutes <= 15) return 3;
-  if (extraMinutes <= 30) return 5;
-  if (extraMinutes <= 60) return 7;
-  return MAX_GENERATED_WAYPOINTS;
+  return profile.maximumWaypoints(extraMinutes);
 }
 
-export function buildGoogleMapsUrl(origin, destination, waypoints) {
-  const params = new URLSearchParams({ api: "1", travelmode: "driving", origin, destination });
+export function buildGoogleMapsUrl(origin, destination, waypoints, travelMode = "driving") {
+  const params = new URLSearchParams({ api: "1", travelmode: travelMode, origin, destination });
   if (waypoints.length > 0) {
     params.set("waypoints", waypoints.map((waypoint) => `${waypoint.lat},${waypoint.lng}`).join("|"));
   }
@@ -338,7 +362,7 @@ async function fitGeneratedRoute(request, search, initialCount, waypointLimit, r
     const candidates = ranked.slice(0, count).sort(routeOrder);
     const route = candidates.length === 0
       ? normalSummary(search)
-      : await compute(request.origin, request.destination, candidates);
+      : await compute(request.origin, request.destination, candidates, request.travelMode);
     if (candidates.length === 0 || route.durationMinutes <= maximum) {
       fitted = { candidates, route };
       break;
@@ -356,7 +380,7 @@ async function fitGeneratedRoute(request, search, initialCount, waypointLimit, r
     if (fitted.candidates.length >= waypointLimit) break;
     if (used.has(candidate.id)) continue;
     const proposed = [...fitted.candidates, candidate].sort(routeOrder);
-    const route = await compute(request.origin, request.destination, proposed);
+    const route = await compute(request.origin, request.destination, proposed, request.travelMode);
     if (route.durationMinutes > maximum) continue;
     fitted = { candidates: proposed, route };
     used.add(candidate.id);
@@ -375,7 +399,7 @@ async function fitGeneratedRoute(request, search, initialCount, waypointLimit, r
   for (const candidate of economical) {
     if (alternative.candidates.length >= waypointLimit) break;
     const proposed = [...alternative.candidates, candidate].sort(routeOrder);
-    const route = await compute(request.origin, request.destination, proposed);
+    const route = await compute(request.origin, request.destination, proposed, request.travelMode);
     if (route.durationMinutes > maximum) continue;
     alternative = { candidates: proposed, route };
     if (route.durationMinutes >= minimum) break;
@@ -416,7 +440,7 @@ async function publicWaypoint(candidate, deps) {
   };
 }
 
-function routeResponse({ origin, destination, normalRoute, recommendedRoute, waypoints, reason, mapsOrigin, mapsDestination }) {
+function routeResponse({ origin, destination, normalRoute, recommendedRoute, waypoints, reason, travelMode = "driving", mapsOrigin, mapsDestination }) {
   const normal = normalizedSummary(normalRoute);
   const recommended = normalizedSummary(recommendedRoute);
   return {
@@ -429,7 +453,8 @@ function routeResponse({ origin, destination, normalRoute, recommendedRoute, way
     },
     waypoints,
     reason,
-    googleMapsUrl: buildGoogleMapsUrl(mapsOrigin, mapsDestination, waypoints),
+    travelMode,
+    googleMapsUrl: buildGoogleMapsUrl(mapsOrigin, mapsDestination, waypoints, travelMode),
   };
 }
 
@@ -492,6 +517,11 @@ function validateTimeConstraint(value) {
     return { type: value.type, minutes: value.minutes };
   }
   throw invalid("timeConstraintの形式が不正です。");
+}
+
+function validateTravelMode(value) {
+  if (typeof value === "string" && TRAVEL_MODES.has(value)) return value;
+  throw invalid("travelModeはdriving、walking、bicyclingのいずれかで指定してください。");
 }
 
 function maximumExtraMinutes(baseMinutes, constraint) {
