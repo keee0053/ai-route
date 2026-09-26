@@ -342,7 +342,26 @@ async function fitGeneratedRoute(request, search, initialCount, waypointLimit, r
     used.add(candidate.id);
     if (route.durationMinutes >= minimum) break;
   }
-  return fitted;
+  if (fitted.route.durationMinutes >= minimum) return fitted;
+
+  // 最初に選ばれた候補の寄り道が大きいと、短い候補を何件も組み合わせられる場合でも
+  // その1件が残って時間を使い切れない。届かなかったときだけ、短い候補から組み直す。
+  const economical = [...ranked].sort((a, b) => {
+    const detour = (a.detourMinutes ?? Number.POSITIVE_INFINITY) - (b.detourMinutes ?? Number.POSITIVE_INFINITY);
+    if (detour !== 0) return detour;
+    return (b.rating ?? 0) - (a.rating ?? 0);
+  });
+  let alternative = { candidates: [], route: normalSummary(search) };
+  for (const candidate of economical) {
+    if (alternative.candidates.length >= waypointLimit) break;
+    const proposed = [...alternative.candidates, candidate].sort(routeOrder);
+    const route = await compute(request.origin, request.destination, proposed);
+    if (route.durationMinutes > maximum) continue;
+    alternative = { candidates: proposed, route };
+    if (route.durationMinutes >= minimum) break;
+  }
+
+  return alternative.route.durationMinutes > fitted.route.durationMinutes ? alternative : fitted;
 }
 
 function minimumPreferredTotalMinutes(baseMinutes, constraint) {

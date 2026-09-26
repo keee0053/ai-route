@@ -165,6 +165,54 @@ test("generateRoutePlan stops adding at seven waypoints when it cannot reach 60 
   assert.equal(result.recommendedRoute.extraMinutes, 28);
 });
 
+test("generateRoutePlan retries with smaller detours when one expensive stop blocks the time target", async () => {
+  const available = [
+    {
+      id: "expensive",
+      name: "遠い人気スポット",
+      category: "観光名所",
+      lat: 34.61,
+      lng: 135.11,
+      rating: 4.9,
+      reviewCount: 500,
+      detourMinutes: 30,
+      routeRatio: 0.2,
+      offRouteKm: 2,
+    },
+    ...Array.from({ length: 5 }, (_, index) => ({
+      id: `quick-${index}`,
+      name: `近い候補${index + 1}`,
+      category: "公園",
+      lat: 34.62 + index * 0.01,
+      lng: 135.12 + index * 0.01,
+      rating: 4.5 - index * 0.05,
+      reviewCount: 300 - index,
+      detourMinutes: 10,
+      routeRatio: 0.3 + index * 0.1,
+      offRouteKm: 0.5,
+    })),
+  ];
+  const result = await generateRoutePlan(
+    {
+      ...generateInput,
+      timeConstraint: { type: "extra_time", minutes: 60 },
+    },
+    dependencies({
+      search: async () => ({ baseMinutes: 60, distanceKm: 50, candidates: available }),
+      compute: async (_origin, _destination, waypoints) => ({
+        durationMinutes: 60 + (waypoints.some((waypoint) => waypoint.id === "expensive")
+          ? 30 + Math.max(0, waypoints.length - 1) * 35
+          : waypoints.length * 10),
+        distanceMeters: 50000,
+      }),
+    }),
+  );
+
+  assert.equal(result.waypoints.length, 4);
+  assert.equal(result.recommendedRoute.extraMinutes, 40);
+  assert.ok(result.waypoints.every((waypoint) => waypoint.placeId.startsWith("quick-")));
+});
+
 test("generateRoutePlan can return more than two waypoints for a long route", async () => {
   const many = [
     ...candidates,
