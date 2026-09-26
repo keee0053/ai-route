@@ -290,7 +290,7 @@ async function handleRouteMap(request, url, env, ctx) {
     .split("|")
     .map((pair) => pair.split(",").map(Number))
     .filter((pair) => pair.length === 2 && pair.every(Number.isFinite))
-    .slice(0, 5);
+    .slice(0, 9);
 
   const route = await computeRoute(env.GOOGLE_MAPS_SERVER_KEY, origin, destination, {
     intermediates: waypoints.map(([lat, lng]) => `${lat},${lng}`),
