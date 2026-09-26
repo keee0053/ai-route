@@ -89,16 +89,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 26,
   },
-  hint: {
-    color: colors.muted,
-    fontSize: 14,
-    lineHeight: 23,
-  },
-    hint: {
-    color: colors.muted,
-    fontSize: 14,
-    lineHeight: 23,
-  },
   error: {
     color: colors.danger,
     fontSize: 13,
