@@ -3,6 +3,7 @@ import { router } from 'expo-router'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { PrimaryButton } from '@/components/PrimaryButton'
+import { GoogleMapsEntry } from '@/components/GoogleMapsEntry'
 import { RouteMap } from '@/components/RouteMap'
 import { colors, radius } from '@/constants/theme'
 import { getHealth } from '@/services/api'
@@ -48,43 +49,52 @@ export default function SharedRouteScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* 共有されたルートを本物の地図で出す。取れるまで(取れなければずっと)飾りの地図 */}
-        <MapArea preview={preview}>
-          <View style={styles.receivedBadge}>
-            <View style={styles.badgeIcon}><Text style={styles.badgeIconText}>G</Text></View>
-            <View>
-              <Text style={styles.badgeEyebrow}>Google Mapsから共有</Text>
-              <Text style={styles.badgeTitle}>
-                {previewLoading ? 'ルートを確認中' : preview ? 'ルートを受け取りました' : error ? 'ルートを確認できません' : 'ルートを共有してください'}
-              </Text>
-            </View>
-          </View>
-        </MapArea>
-
-        <View style={styles.body}>
-          <View style={styles.headingBlock}>
-            <Text style={styles.title}>このルートを{`\n`}もっと楽しむ</Text>
-          </View>
-
-          <View style={styles.routeCard}>
-            <View style={styles.locationRow}>
-              <View style={styles.timeline}>
-                <View style={[styles.timelineDot, styles.originMark]} />
-                <View style={styles.timelineLine} />
-                <View style={[styles.timelineDot, { backgroundColor: colors.destination }]} />
-              </View>
-              <View style={styles.locations}>
-                <View><Text style={styles.label}>出発地</Text><Text style={styles.location}>{originName}</Text></View>
-                <View><Text style={styles.label}>目的地</Text><Text style={styles.location}>{destinationName}</Text></View>
+      <ScrollView contentContainerStyle={[styles.content, { flexGrow: 1, justifyContent: 'space-between' }]}>
+        {/* ルートを受け取った後だけ地図を表示する。 */}
+        {preview ? (
+          <MapArea preview={preview}>
+            <View style={styles.receivedBadge}>
+              <View style={styles.badgeIcon}><Text style={styles.badgeIconText}>G</Text></View>
+              <View>
+                <Text style={styles.badgeEyebrow}>Google Mapsから共有</Text>
+                <Text style={styles.badgeTitle}>
+                  {previewLoading ? 'ルートを確認中' : preview ? 'ルートを受け取りました' : error ? 'ルートを確認できません' : 'ルートを共有してください'}
+                </Text>
               </View>
             </View>
-            <View style={styles.metrics}>
-              <View style={styles.metric}><Text style={styles.label}>通常ルート</Text><Text style={styles.metricValue}>{duration}</Text></View>
-              <View style={styles.metricDivider} />
-              <View style={styles.metric}><Text style={styles.label}>距離</Text><Text style={styles.metricValue}>{distance}</Text></View>
+          </MapArea>
+        ) : null}
+
+        <View style={[styles.body, !preview && !previewLoading && styles.entryBody]}>
+          {!preview && !previewLoading ? <GoogleMapsEntry /> : null}
+          {previewLoading ? <Text accessibilityRole="text" style={styles.connectionText}>ルートを確認中…</Text> : null}
+          {preview ? (
+            <>
+            <View style={styles.headingBlock}>
+              <Text style={styles.title}>このルートを{`\n`}もっと楽しむ</Text>
             </View>
-          </View>
+
+            <View style={styles.routeCard}>
+              <View style={styles.locationRow}>
+                <View style={styles.timeline}>
+                  <View style={[styles.timelineDot, styles.originMark]} />
+                  <View style={styles.timelineLine} />
+                  <View style={[styles.timelineDot, { backgroundColor: colors.destination }]} />
+                </View>
+                <View style={styles.locations}>
+                  <View><Text style={styles.label}>出発地</Text><Text style={styles.location}>{originName}</Text></View>
+                  <View><Text style={styles.label}>目的地</Text><Text style={styles.location}>{destinationName}</Text></View>
+                </View>
+              </View>
+              <View style={styles.metrics}>
+                <View style={styles.metric}><Text style={styles.label}>通常ルート</Text><Text style={styles.metricValue}>{duration}</Text></View>
+                <View style={styles.metricDivider} />
+                <View style={styles.metric}><Text style={styles.label}>距離</Text><Text style={styles.metricValue}>{distance}</Text></View>
+              </View>
+            </View>
+
+            </>
+          ) : null}
 
           {/* 繋がっているときは何も出さない(開発用の表示だった)。繋がらないときだけ知らせる */}
           {connection === 'offline' ? (
@@ -104,9 +114,11 @@ export default function SharedRouteScreen() {
             </View>
           ) : null}
 
-          <View style={styles.actions}>
-            <PrimaryButton disabled={!preview} loading={previewLoading} onPress={() => router.push('/preferences')}>ルートをアレンジする</PrimaryButton>
-          </View>
+          {preview ? (
+            <View style={styles.actions}>
+              <PrimaryButton disabled={!preview} loading={previewLoading} onPress={() => router.push('/preferences')}>ルートをアレンジする</PrimaryButton>
+            </View>
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -145,6 +157,12 @@ const styles = StyleSheet.create({
   badgeEyebrow: { color: colors.faint, fontSize: 10 },
   badgeTitle: { color: colors.ink, fontSize: 12, fontWeight: '700', marginTop: 2 },
   body: { flex: 1, padding: 24, gap: 22 },
+  entryBody: {
+    backgroundColor: colors.brandSoft,
+    padding: 24,
+    paddingTop: 48,
+    paddingBottom: 40,
+  },
   headingBlock: { gap: 5 },
   eyebrow: { color: colors.brand, fontSize: 12, fontWeight: '700' },
   title: { color: colors.ink, fontSize: 28, lineHeight: 35, fontWeight: '800' },
