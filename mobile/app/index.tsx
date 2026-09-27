@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { router } from 'expo-router'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -14,7 +14,8 @@ type ConnectionState = 'checking' | 'online' | 'offline'
 
 export default function SharedRouteScreen() {
   const [connection, setConnection] = useState<ConnectionState>('checking')
-  const { googleMapsUrl, preview, previewLoading, error, receiveSharedUrl } = useRoute()
+  const initialUrlHandledRef = useRef(false)
+  const { googleMapsUrl, preview, previewLoading, error, receiveSharedUrl, clearError } = useRoute()
 
   const checkConnection = useCallback(() => {
     setConnection('checking')
@@ -38,7 +39,9 @@ export default function SharedRouteScreen() {
   }, [checkConnection])
 
   useEffect(() => {
-    if (googleMapsUrl && !preview && !previewLoading && !error) void receiveSharedUrl(googleMapsUrl)
+    if (!googleMapsUrl || initialUrlHandledRef.current) return
+    initialUrlHandledRef.current = true
+    if (!preview && !previewLoading && !error) void receiveSharedUrl(googleMapsUrl)
   }, [error, googleMapsUrl, preview, previewLoading, receiveSharedUrl])
 
 
@@ -49,7 +52,11 @@ export default function SharedRouteScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <ScrollView contentContainerStyle={[styles.content, { flexGrow: 1, justifyContent: 'space-between' }]}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { flexGrow: 1, justifyContent: 'space-between' }]}
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+      >
         {/* ルートを受け取った後だけ地図を表示する。 */}
         {preview ? (
           <MapArea preview={preview}>
@@ -65,9 +72,16 @@ export default function SharedRouteScreen() {
           </MapArea>
         ) : null}
 
-        <View style={[styles.body, !preview && !previewLoading && styles.entryBody]}>
-          {!preview && !previewLoading ? <GoogleMapsEntry /> : null}
-          {previewLoading ? <Text accessibilityRole="text" style={styles.connectionText}>ルートを確認中…</Text> : null}
+        <View style={[styles.body, !preview && styles.entryBody]}>
+          {!preview ? (
+            <GoogleMapsEntry
+              initialUrl={googleMapsUrl}
+              importError={error?.message}
+              loading={previewLoading}
+              onClearError={clearError}
+              onImportUrl={receiveSharedUrl}
+            />
+          ) : null}
           {preview ? (
             <>
             <View style={styles.headingBlock}>
@@ -105,7 +119,7 @@ export default function SharedRouteScreen() {
             </View>
           ) : null}
 
-          {error ? (
+          {error && preview ? (
             <View style={styles.errorBlock}>
               <Text accessibilityRole="alert" style={styles.errorText}>{error.message}</Text>
               {error.retryable && googleMapsUrl ? (
@@ -158,10 +172,9 @@ const styles = StyleSheet.create({
   badgeTitle: { color: colors.ink, fontSize: 12, fontWeight: '700', marginTop: 2 },
   body: { flex: 1, padding: 24, gap: 22 },
   entryBody: {
-    backgroundColor: colors.brandSoft,
-    padding: 24,
-    paddingTop: 48,
-    paddingBottom: 40,
+    backgroundColor: '#F0F7FF',
+    padding: 0,
+    gap: 0,
   },
   headingBlock: { gap: 5 },
   eyebrow: { color: colors.brand, fontSize: 12, fontWeight: '700' },
