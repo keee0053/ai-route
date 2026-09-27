@@ -171,7 +171,6 @@ export default function PreferencesScreen() {
               if (success) router.push('/result')
             })
           }}>AIでルートを作る</PrimaryButton>
-          <Text style={styles.summary}>{selected.length === 0 ? 'おまかせ' : selected.map((value) => chips.find((chip) => chip.value === value)?.label).join('・')}で探します</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -209,7 +208,7 @@ const styles = StyleSheet.create({
   totalTimeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 },
   totalTimeInput: { width: 96, height: 46, borderWidth: 1, borderColor: colors.border, borderRadius: radius.medium, color: colors.ink, fontSize: 18, fontWeight: '700', textAlign: 'center' },
   totalTimeSuffix: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  footer: { gap: 8, marginTop: 16 },
-  summary: { color: colors.faint, fontSize: 12, textAlign: 'center' },
+  // 余った縦幅はボタンの上に回し、ボタンを画面の下に置く
+  footer: { gap: 8, marginTop: 'auto', paddingTop: 16 },
   errorText: { color: colors.danger, fontSize: 13, lineHeight: 19 },
 })
