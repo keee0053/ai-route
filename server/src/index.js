@@ -1,4 +1,4 @@
-import { computeRoute, findPlace, searchAlongRoute, proxyPhoto, queriesForGenre } from "./google.js";
+import { computeRoute, findPlace, searchAlongRoute, proxyPhoto, queriesForGenre, genreOfQueries } from "./google.js";
 import { pickNext, tagWithJev } from "./jev.js";
 import { generateTags, generateTagsBatch, fallbackTags } from "./gemini.js";
 import {
@@ -268,7 +268,10 @@ async function getSearchData(origin, destination, genre, travelMode, env, ctx) {
     route.baseMinutes,
     googleMode,
   );
-  const candidates = [...found.candidates].sort((a, b) => a.detourMinutes - b.detourMinutes);
+  const genreOf = genreOfQueries(genre, googleMode);
+  const candidates = found.candidates
+    .map((candidate) => ({ ...candidate, genre: genreOf[candidate.query] }))
+    .sort((a, b) => a.detourMinutes - b.detourMinutes);
   const data = {
     baseMinutes: route.baseMinutes,
     durationMinutes: route.durationMinutes,

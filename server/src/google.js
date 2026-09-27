@@ -18,6 +18,8 @@ export const GENRE_QUERIES = {
   view: ["展望台", "海岸", "公園"],
   sightseeing: ["観光スポット", "神社", "城"],
   rest: ["道の駅", "サービスエリア", "お土産"],
+  onsen: ["温泉", "日帰り温泉", "スーパー銭湯"],
+  quiet: ["庭園", "寺", "公園"],
 };
 
 /** おまかせ。各ジャンルから1本ずつ */
@@ -50,6 +52,15 @@ export function placeKind(primaryType) {
   return SWEETS.test(type) ? "sweets" : "meal";
 }
 
+/** 検索語 → ジャンル。"sweets+view" なら カフェ→sweets・展望台→view。複数のジャンルにある語は先のジャンル */
+export function genreOfQueries(genre, travelMode = "DRIVE") {
+  const map = {};
+  for (const one of (genre ?? "").split("+").filter(Boolean)) {
+    for (const query of queriesForSingleGenre(one, travelMode)) map[query] ??= one;
+  }
+  return map;
+}
+
 /** genre は1つか、"sweets+view" のように "+" でつないだ複数。複数なら各ジャンルの検索語を重複なしで合わせる */
 export function queriesForGenre(genre, travelMode = "DRIVE") {
   if (!genre) return MODE_DEFAULT_QUERIES[travelMode] ?? DEFAULT_QUERIES;
@@ -60,6 +71,7 @@ export function queriesForGenre(genre, travelMode = "DRIVE") {
 }
 
 function queriesForSingleGenre(genre, travelMode) {
+  if (genre === "onsen" && travelMode !== "DRIVE") return ["銭湯", "温泉", "日帰り温泉"];
   if (genre === "rest" && travelMode === "WALK") return ["公園", "カフェ", "銭湯", "休憩スポット"];
   if (genre === "rest" && travelMode === "BICYCLE") return ["公園", "カフェ", "道の駅", "サイクルステーション"];
   return GENRE_QUERIES[genre] ?? DEFAULT_QUERIES;
@@ -201,12 +213,13 @@ export async function searchAlongRoute(key, polyline, queries = DEFAULT_QUERIES,
   const points = decodePolyline(polyline);
   const byId = new Map();
 
-  for (const body of responses) {
+  responses.forEach((body, i) => {
     for (const p of body.places ?? []) {
       if (byId.has(p.id)) continue;
-      byId.set(p.id, toCandidate(p, points, baseMinutes, travelMode));
+      // どの検索語で見つかったか。温泉と展望台はどちらも spot なので、希望ごとに埋めるのに使う
+      byId.set(p.id, { ...toCandidate(p, points, baseMinutes, travelMode), query: queries[i] });
     }
-  }
+  });
 
   const perQuery = responses.map((b, i) => `${queries[i]}:${(b.places ?? []).length}`);
   const errors = responses
