@@ -10,6 +10,8 @@ import {
   generateRoutePlan,
   genreForPreferences,
   maximumGeneratedWaypointCount,
+  economicalOrder,
+  genreDetourCap,
   narrowToWantedGenres,
   wantedGenres,
   RouteServiceError,
@@ -643,4 +645,20 @@ test("wanted genres fill each selected preference before repeating one", () => {
   // 希望のジャンルが尽きたら他の候補で埋める
   assert.deepEqual(narrowToWantedGenres([diner], [cafe], ["sweets"]), [diner]);
   assert.deepEqual(narrowToWantedGenres([cafe, diner], [], []), [cafe, diner]);
+});
+
+test("with two or more preferences, missing ones prefer short detours and each gets a cheap slot", () => {
+  const far = { id: "far", kind: "spot", genre: "view", detourMinutes: 26 };
+  const near = { id: "near", kind: "spot", genre: "view", detourMinutes: 9 };
+  const onsen = { id: "o", kind: "spot", genre: "onsen", detourMinutes: 12 };
+  const ramen = { id: "r", kind: "meal", genre: "meal", detourMinutes: 3 };
+  const cap = genreDetourCap(60, { type: "extra_time", minutes: 30 }, ["view", "onsen"]);
+  assert.equal(cap, 15);
+  assert.deepEqual(narrowToWantedGenres([far, near, onsen], [], ["view", "onsen"], cap), [near, onsen]);
+  // 短い候補が無ければ長くても希望から選ぶ
+  assert.deepEqual(narrowToWantedGenres([far], [], ["view"], 5), [far]);
+  assert.equal(genreDetourCap(60, { type: "extra_time", minutes: 30 }, ["view"]), Number.POSITIVE_INFINITY);
+  assert.equal(genreDetourCap(60, { type: "none" }, ["view", "onsen"]), Number.POSITIVE_INFINITY);
+  assert.deepEqual(economicalOrder([far, ramen, near], ["view", "meal"]).map((c) => c.id), ["near", "r", "far"]);
+  assert.deepEqual(economicalOrder([far, ramen, near]).map((c) => c.id), ["r", "near", "far"]);
 });

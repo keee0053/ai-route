@@ -64,7 +64,9 @@ export async function generateRoutePlan(input, deps) {
     ? count
     : Math.min(waypointLimit, pool.length);
   const limits = kindLimits(search.baseMinutes);
-  const picked = await pickWaypoints(pool, pickCount, requestText(request), deps.pick, limits, wantedGenres(request.preferences));
+  const genres = wantedGenres(request.preferences);
+  const detourCap = genreDetourCap(search.baseMinutes, request.timeConstraint, genres);
+  const picked = await pickWaypoints(pool, pickCount, requestText(request), deps.pick, limits, genres, detourCap);
   const pickedIds = new Set(picked.candidates.map((candidate) => candidate.id));
   const fallbackCandidates = pool
     .filter((candidate) => !pickedIds.has(candidate.id))
@@ -73,7 +75,7 @@ export async function generateRoutePlan(input, deps) {
     ...picked.candidates,
     ...fallbackCandidates,
   ];
-  const fitted = await fitGeneratedRoute(request, search, count, waypointLimit, ranked, deps.compute, limits);
+  const fitted = await fitGeneratedRoute(request, search, count, waypointLimit, ranked, deps.compute, limits, genres);
   const waypoints = await Promise.all(fitted.candidates.map((candidate) => publicWaypoint(candidate, deps)));
   const usedPickedCandidate = fitted.candidates.some((candidate) => pickedIds.has(candidate.id));
 
@@ -395,17 +397,41 @@ function inGenre(candidate, genre) {
  * こうしないと AI が景色+カフェでカフェ→「カフェ」という名前の食事の店と選んだり、
  * 景色+温泉で展望台だけ選んだりして、選んだ希望の片方が出ない
  */
-export function narrowToWantedGenres(candidates, selected, genres) {
+export function narrowToWantedGenres(candidates, selected, genres, detourCap = Number.POSITIVE_INFINITY) {
   if (genres.length === 0) return candidates;
   const missing = genres.filter((genre) => !selected.some((item) => inGenre(item, genre)));
-  for (const group of [missing, genres]) {
-    const narrowed = candidates.filter((item) => group.some((genre) => inGenre(item, genre)));
+  // まだ出ていない希望は、追加時間を希望の数で割った寄り道までの候補から選ぶ。
+  // 大吉山(+26分)のような大きな寄り道が先に入ると +30分を使い切り、もう片方の希望が入らない
+  const short = candidates.filter((item) => (item.detourMinutes ?? 0) <= detourCap);
+  for (const [group, pool] of [[missing, short], [missing, candidates], [genres, candidates]]) {
+    const narrowed = pool.filter((item) => group.some((genre) => inGenre(item, genre)));
     if (narrowed.length > 0) return narrowed;
   }
   return candidates;
 }
 
-async function pickWaypoints(pool, count, text, pick, limits, genres = []) {
+/** 希望が2つ以上で時間の指定があるとき、1件あたりの寄り道の目安。それ以外は制限なし */
+export function genreDetourCap(baseMinutes, constraint, genres) {
+  if (genres.length < 2) return Number.POSITIVE_INFINITY;
+  return maximumExtraMinutes(baseMinutes, constraint) / genres.length;
+}
+
+/** 希望ごとに寄り道が一番短い候補を先に並べ、残りは寄り道の短い順 */
+export function economicalOrder(candidates, genres = []) {
+  const byDetour = [...candidates].sort((a, b) => {
+    const detour = (a.detourMinutes ?? Number.POSITIVE_INFINITY) - (b.detourMinutes ?? Number.POSITIVE_INFINITY);
+    if (detour !== 0) return detour;
+    return (b.rating ?? 0) - (a.rating ?? 0);
+  });
+  const firsts = [];
+  for (const genre of genres) {
+    const first = byDetour.find((item) => inGenre(item, genre) && !firsts.includes(item));
+    if (first) firsts.push(first);
+  }
+  return [...firsts, ...byDetour.filter((item) => !firsts.includes(item))];
+}
+
+async function pickWaypoints(pool, count, text, pick, limits, genres = [], detourCap = Number.POSITIVE_INFINITY) {
   const selected = [];
   const reasons = [];
   let remaining = pool;
@@ -414,7 +440,7 @@ async function pickWaypoints(pool, count, text, pick, limits, genres = []) {
     // 上限に達した種類(2件目の食事など)は候補から外す
     remaining = remaining.filter((item) => fitsKindLimits(selected, item, limits));
     if (remaining.length === 0) break;
-    const choice = await safePick(narrowToWantedGenres(remaining, selected, genres), text, pick);
+    const choice = await safePick(narrowToWantedGenres(remaining, selected, genres, detourCap), text, pick);
     const candidate = choice.candidate ?? remaining[0];
     selected.push(candidate);
     if (choice.reason) reasons.push(choice.reason);
@@ -436,7 +462,7 @@ async function safePick(candidates, text, pick, feedback = {}) {
   }
 }
 
-async function fitGeneratedRoute(request, search, initialCount, waypointLimit, ranked, compute, limits) {
+async function fitGeneratedRoute(request, search, initialCount, waypointLimit, ranked, compute, limits, genres = []) {
   const maximum = maximumTotalMinutes(search.baseMinutes, request.timeConstraint);
   const minimum = minimumPreferredTotalMinutes(search.baseMinutes, request.timeConstraint);
   const computedRoutes = new Map();
@@ -483,11 +509,8 @@ async function fitGeneratedRoute(request, search, initialCount, waypointLimit, r
 
   // 最初に選ばれた候補の寄り道が大きいと、短い候補を何件も組み合わせられる場合でも
   // その1件が残って時間を使い切れない。届かなかったときだけ、短い候補から組み直す。
-  const economical = [...ranked].sort((a, b) => {
-    const detour = (a.detourMinutes ?? Number.POSITIVE_INFINITY) - (b.detourMinutes ?? Number.POSITIVE_INFINITY);
-    if (detour !== 0) return detour;
-    return (b.rating ?? 0) - (a.rating ?? 0);
-  });
+  // 希望を選んでいれば、希望ごとに一番短い候補から入れる(短い順だけだと食事の店ばかりになり景色が抜ける)
+  const economical = economicalOrder(ranked, genres);
   let alternative = { candidates: [], route: normalSummary(search) };
   for (const candidate of economical) {
     if (alternative.candidates.length >= waypointLimit) break;
