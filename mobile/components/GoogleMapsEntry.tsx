@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native'
 import {
-  CheckCircle2,
+  ArrowRight,
   ClipboardPaste,
   ExternalLink,
   Link2,
@@ -147,23 +147,25 @@ export function GoogleMapsEntry({
           <Text style={styles.subtitle}>保存したルートを取り込んでナビを開始</Text>
         </View>
 
-        <View style={styles.card}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Googleマップを開く"
-            accessibilityState={{ busy: opening, disabled: opening }}
-            disabled={opening}
-            onPress={() => void openGoogleMaps()}
-            style={({ pressed }) => [styles.primaryButton, pressed && styles.buttonPressed]}
-          >
-            <Map size={22} color="#FFFFFF" strokeWidth={2.3} />
-            <Text adjustsFontSizeToFit minimumFontScale={0.85} numberOfLines={1} style={styles.primaryButtonText}>
-              {opening ? '開いています...' : 'Googleマップを開く'}
-            </Text>
-            {opening
-              ? <ActivityIndicator color="#FFFFFF" size="small" />
-              : <ExternalLink size={19} color="#FFFFFF" strokeWidth={2.3} />}
-          </Pressable>
+        <View style={styles.mainAction}>
+          <View style={[styles.card, styles.openCard]}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Googleマップを開く"
+              accessibilityState={{ busy: opening, disabled: opening }}
+              disabled={opening}
+              onPress={() => void openGoogleMaps()}
+              style={({ pressed }) => [styles.primaryButton, pressed && styles.buttonPressed]}
+            >
+              <Map size={22} color="#FFFFFF" strokeWidth={2.3} />
+              <Text adjustsFontSizeToFit minimumFontScale={0.85} numberOfLines={1} style={styles.primaryButtonText}>
+                {opening ? '開いています...' : 'Googleマップを開く'}
+              </Text>
+              {opening
+                ? <ActivityIndicator color="#FFFFFF" size="small" />
+                : <ExternalLink size={19} color="#FFFFFF" strokeWidth={2.3} />}
+            </Pressable>
+          </View>
         </View>
 
         <View accessibilityRole="text" style={styles.dividerRow}>
@@ -172,16 +174,7 @@ export function GoogleMapsEntry({
           <View style={styles.divider} />
         </View>
 
-        <View style={styles.card}>
-          <View style={styles.formHeading}>
-            <Text style={styles.formTitle}>共有URLを入力</Text>
-            <View style={[styles.stateBadge, hasUrl && styles.stateBadgeActive]}>
-              <Text style={[styles.stateText, hasUrl && styles.stateTextActive]}>
-                {hasUrl ? '入力済み' : '未入力'}
-              </Text>
-            </View>
-          </View>
-
+        <View style={[styles.card, styles.urlCard]}>
           <View style={[styles.inputShell, hasUrl && styles.inputShellActive, error && styles.inputShellError]}>
             <Link2 size={19} color={hasUrl ? '#0879E1' : '#8090A3'} strokeWidth={2.2} />
             <TextInput
@@ -200,7 +193,19 @@ export function GoogleMapsEntry({
               value={url}
             />
             {hasUrl ? (
-              <CheckCircle2 size={21} color="#0879E1" fill="#E7F3FF" strokeWidth={2.2} />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Googleマップのルートを読み込む"
+                accessibilityState={{ busy: loading, disabled: loading }}
+                disabled={loading}
+                hitSlop={8}
+                onPress={() => void importRoute()}
+                style={({ pressed }) => [styles.submitButton, pressed && styles.buttonPressed]}
+              >
+                {loading
+                  ? <ActivityIndicator color="#FFFFFF" size="small" />
+                  : <ArrowRight size={20} color="#FFFFFF" strokeWidth={2.5} />}
+              </Pressable>
             ) : (
               <Pressable
                 accessibilityRole="button"
@@ -221,24 +226,6 @@ export function GoogleMapsEntry({
               {error}
             </Text>
           ) : null}
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Googleマップのルートを読み込む"
-            accessibilityState={{ busy: loading, disabled: !hasUrl || loading }}
-            disabled={!hasUrl || loading}
-            onPress={() => void importRoute()}
-            style={({ pressed }) => [
-              styles.loadButton,
-              hasUrl && !loading && styles.loadButtonActive,
-              pressed && hasUrl && !loading && styles.buttonPressed,
-            ]}
-          >
-            {loading ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}
-            <Text style={[styles.loadButtonText, hasUrl && styles.loadButtonTextActive]}>
-              {loading ? '読み込み中...' : 'ルートを読み込む'}
-            </Text>
-          </Pressable>
         </View>
       </View>
     </View>
@@ -248,23 +235,20 @@ export function GoogleMapsEntry({
 const styles = StyleSheet.create({
   screen: { flex: 1, minHeight: 700, overflow: 'hidden', backgroundColor: '#F0F7FF' },
   dot: { position: 'absolute', width: 2, height: 2, borderRadius: 1, backgroundColor: '#CFE3F7', opacity: 0.72 },
-  content: { maxWidth: 520, alignSelf: 'stretch', paddingHorizontal: 20, paddingTop: 30, paddingBottom: 36, gap: 18 },
+  content: { flex: 1, maxWidth: 520, alignSelf: 'stretch', paddingHorizontal: 20, paddingTop: 30, paddingBottom: 36, gap: 18 },
   header: { alignItems: 'center', gap: 8, marginBottom: 2 },
   title: { color: '#1D232C', fontSize: 24, fontWeight: '800', lineHeight: 32, textAlign: 'center' },
   subtitle: { color: '#5F6F82', fontSize: 14, lineHeight: 21, textAlign: 'center' },
   card: { padding: 18, gap: 15, borderWidth: 1, borderColor: '#E2EEFC', borderRadius: 20, backgroundColor: '#FFFFFF', shadowColor: '#44719B', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.07, shadowRadius: 14, elevation: 2 },
+  mainAction: { flex: 1, justifyContent: 'center' },
+  openCard: { padding: 18 },
+  urlCard: { padding: 14, gap: 9 },
   primaryButton: { minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 11, paddingHorizontal: 18, borderRadius: 14, backgroundColor: '#0783F2' },
   primaryButtonText: { flexShrink: 1, color: '#FFFFFF', fontSize: 17, fontWeight: '800', textAlign: 'center' },
   buttonPressed: { opacity: 0.78 },
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 10 },
   divider: { flex: 1, height: 1, backgroundColor: '#D8E7F5' },
   dividerText: { color: '#77889A', fontSize: 12, fontWeight: '600' },
-  formHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  formTitle: { color: '#1D232C', fontSize: 16, fontWeight: '800' },
-  stateBadge: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 12, backgroundColor: '#EDF3F8' },
-  stateBadgeActive: { backgroundColor: '#E4F2FF' },
-  stateText: { color: '#7B8B9C', fontSize: 11, fontWeight: '700' },
-  stateTextActive: { color: '#0879E1' },
   inputShell: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 10, paddingLeft: 14, paddingRight: 9, borderWidth: 1, borderColor: '#DCE8F3', borderRadius: 12, backgroundColor: '#F4F9FD' },
   inputShellActive: { borderColor: '#49A4F4', backgroundColor: '#F8FCFF' },
   inputShellError: { borderColor: '#D94C4C' },
@@ -272,9 +256,6 @@ const styles = StyleSheet.create({
   pasteButton: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#E5F2FF' },
   pasteButtonPressed: { backgroundColor: '#D4E9FC' },
   pasteText: { color: '#0879E1', fontSize: 12, fontWeight: '700' },
+  submitButton: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0783F2' },
   errorText: { marginTop: -5, color: '#C83838', fontSize: 12, lineHeight: 18 },
-  loadButton: { minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, paddingHorizontal: 16, borderRadius: 14, backgroundColor: '#E8F0F8', opacity: 0.68 },
-  loadButtonActive: { backgroundColor: '#0783F2', opacity: 1 },
-  loadButtonText: { color: '#8A9AAA', fontSize: 16, fontWeight: '800' },
-  loadButtonTextActive: { color: '#FFFFFF' },
 })
