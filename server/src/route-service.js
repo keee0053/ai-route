@@ -29,7 +29,8 @@ const MODE_PROFILES = {
   driving: {
     maxOffRouteKm: 6,
     initialWaypoints: (minutes) => minutes < 30 ? 2 : minutes < 90 ? 3 : minutes < 180 ? 4 : 5,
-    maximumWaypoints: (extraMinutes) => extraMinutes <= 15 ? 3 : extraMinutes <= 30 ? 5 : extraMinutes <= 60 ? 7 : 9,
+    // +30分で5件は近場だと詰め込みすぎ(9/27)。+30分までは3件
+    maximumWaypoints: (extraMinutes) => extraMinutes <= 30 ? 3 : extraMinutes <= 60 ? 7 : 9,
   },
   bicycling: {
     maxOffRouteKm: 2,
@@ -62,7 +63,8 @@ export async function generateRoutePlan(input, deps) {
   const pickCount = count === 0 || request.timeConstraint.type === "none"
     ? count
     : Math.min(waypointLimit, pool.length);
-  const picked = await pickWaypoints(pool, pickCount, requestText(request), deps.pick);
+  const limits = kindLimits(search.baseMinutes);
+  const picked = await pickWaypoints(pool, pickCount, requestText(request), deps.pick, limits);
   const pickedIds = new Set(picked.candidates.map((candidate) => candidate.id));
   const fallbackCandidates = pool
     .filter((candidate) => !pickedIds.has(candidate.id))
@@ -71,7 +73,7 @@ export async function generateRoutePlan(input, deps) {
     ...picked.candidates,
     ...fallbackCandidates,
   ];
-  const fitted = await fitGeneratedRoute(request, search, count, waypointLimit, ranked, deps.compute);
+  const fitted = await fitGeneratedRoute(request, search, count, waypointLimit, ranked, deps.compute, limits);
   const waypoints = await Promise.all(fitted.candidates.map((candidate) => publicWaypoint(candidate, deps)));
   const usedPickedCandidate = fitted.candidates.some((candidate) => pickedIds.has(candidate.id));
 
@@ -103,9 +105,12 @@ export async function editRoutePlan(input, deps) {
       ...current.waypoints.map((waypoint) => waypoint.placeId),
       ...request.action.excludedPlaceIds,
     ]);
-    const pool = candidatePool(search.candidates, current.normalRoute.durationMinutes, request.timeConstraint, request.travelMode)
+    const unused = candidatePool(search.candidates, current.normalRoute.durationMinutes, request.timeConstraint, request.travelMode)
       .filter((candidate) => !excluded.has(candidate.id));
-    if (pool.length === 0) throw noCandidates();
+    if (unused.length === 0) throw noCandidates();
+    const limits = kindLimits(current.normalRoute.durationMinutes);
+    const withinLimits = unused.filter((candidate) => fitsKindLimits(current.waypoints, candidate, limits));
+    const pool = withinLimits.length > 0 ? withinLimits : unused;
 
     const picked = await safePick(pool, requestText(request), deps.pick);
     const ordered = picked.candidate
@@ -163,8 +168,12 @@ export async function editRoutePlan(input, deps) {
   ]);
   const unused = candidatePool(search.candidates, current.normalRoute.durationMinutes, request.timeConstraint, request.travelMode)
     .filter((candidate) => !excluded.has(candidate.id));
-  const remaining = sameKindCandidates(unused, kindOfWaypoint(current.waypoints[index], search.candidates));
-  if (remaining.length === 0) throw noCandidates();
+  const sameKind = sameKindCandidates(unused, kindOfWaypoint(current.waypoints[index], search.candidates));
+  if (sameKind.length === 0) throw noCandidates();
+  const others = current.waypoints.filter((_, i) => i !== index);
+  const limits = kindLimits(current.normalRoute.durationMinutes);
+  const withinLimits = sameKind.filter((candidate) => fitsKindLimits(others, candidate, limits));
+  const remaining = withinLimits.length > 0 ? withinLimits : sameKind;
 
   // 消去型: 嫌だった特徴を持つ候補をまとめて外す。全部消えるなら外さず、選ぶときに避けさせるだけにする
   const badTags = request.action.badTags;
@@ -226,6 +235,30 @@ function sameKindCandidates(candidates, kind) {
   if (same.length > 0) return same;
   const eatery = (value) => value === "meal" || value === "sweets";
   return candidates.filter((candidate) => candidate.kind && eatery(candidate.kind) === eatery(kind));
+}
+
+/**
+ * 1ルートに入れる種類ごとの上限。近場で時間に余裕があると、寄り道の短い飲食店ばかりが並ぶ(8分のルートに食事3件)。
+ * 食事は長いルート(通常3時間以上)だけ2件まで。スポット(展望台・公園など)と種類不明は制限しない
+ */
+export function kindLimits(baseMinutes) {
+  return { meal: baseMinutes >= 180 ? 2 : 1, sweets: 1 };
+}
+
+export function fitsKindLimits(selected, candidate, limits) {
+  const limit = limits?.[candidate.kind];
+  if (limit === undefined) return true;
+  return selected.filter((item) => item.kind === candidate.kind).length < limit;
+}
+
+/** 並び順のまま、種類の上限を超えるものを飛ばして count 件まで取る */
+function takeWithinKindLimits(candidates, count, limits) {
+  const taken = [];
+  for (const candidate of candidates) {
+    if (taken.length >= count) break;
+    if (fitsKindLimits(taken, candidate, limits)) taken.push(candidate);
+  }
+  return taken;
 }
 
 export function validateGenerateRequest(input) {
@@ -332,12 +365,15 @@ export function buildGoogleMapsUrl(origin, destination, waypoints, travelMode = 
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
-async function pickWaypoints(pool, count, text, pick) {
+async function pickWaypoints(pool, count, text, pick, limits) {
   const selected = [];
   const reasons = [];
   let remaining = pool;
 
-  while (selected.length < count && remaining.length > 0) {
+  while (selected.length < count) {
+    // 上限に達した種類(2件目の食事など)は候補から外す
+    remaining = remaining.filter((item) => fitsKindLimits(selected, item, limits));
+    if (remaining.length === 0) break;
     const choice = await safePick(remaining, text, pick);
     const candidate = choice.candidate ?? remaining[0];
     selected.push(candidate);
@@ -360,7 +396,7 @@ async function safePick(candidates, text, pick, feedback = {}) {
   }
 }
 
-async function fitGeneratedRoute(request, search, initialCount, waypointLimit, ranked, compute) {
+async function fitGeneratedRoute(request, search, initialCount, waypointLimit, ranked, compute, limits) {
   const maximum = maximumTotalMinutes(search.baseMinutes, request.timeConstraint);
   const minimum = minimumPreferredTotalMinutes(search.baseMinutes, request.timeConstraint);
   const computedRoutes = new Map();
@@ -377,7 +413,7 @@ async function fitGeneratedRoute(request, search, initialCount, waypointLimit, r
 
   // まず距離別の目安件数を試し、上限超過なら収まるまで減らす。
   while (count >= 0) {
-    const candidates = ranked.slice(0, count).sort(routeOrder);
+    const candidates = takeWithinKindLimits(ranked, count, limits).sort(routeOrder);
     const route = await computeOnce(candidates);
     if (candidates.length === 0 || route.durationMinutes <= maximum) {
       fitted = { candidates, route };
@@ -395,6 +431,7 @@ async function fitGeneratedRoute(request, search, initialCount, waypointLimit, r
   for (const candidate of ranked) {
     if (fitted.candidates.length >= waypointLimit) break;
     if (used.has(candidate.id)) continue;
+    if (!fitsKindLimits(fitted.candidates, candidate, limits)) continue;
     const proposed = [...fitted.candidates, candidate].sort(routeOrder);
     const route = await computeOnce(proposed);
     if (route.durationMinutes > maximum) continue;
@@ -414,6 +451,7 @@ async function fitGeneratedRoute(request, search, initialCount, waypointLimit, r
   let alternative = { candidates: [], route: normalSummary(search) };
   for (const candidate of economical) {
     if (alternative.candidates.length >= waypointLimit) break;
+    if (!fitsKindLimits(alternative.candidates, candidate, limits)) continue;
     const proposed = [...alternative.candidates, candidate].sort(routeOrder);
     const route = await computeOnce(proposed);
     if (route.durationMinutes > maximum) continue;
