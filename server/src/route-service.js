@@ -63,8 +63,17 @@ export async function generateRoutePlan(input, deps) {
     ? count
     : Math.min(waypointLimit, pool.length);
   const picked = await pickWaypoints(pool, pickCount, requestText(request), deps.pick);
-  const fitted = await fitGeneratedRoute(request, search, count, waypointLimit, picked.candidates, deps.compute);
+  const pickedIds = new Set(picked.candidates.map((candidate) => candidate.id));
+  const fallbackCandidates = pool
+    .filter((candidate) => !pickedIds.has(candidate.id))
+    .sort((a, b) => (a.detourMinutes ?? Number.POSITIVE_INFINITY) - (b.detourMinutes ?? Number.POSITIVE_INFINITY));
+  const ranked = [
+    ...picked.candidates,
+    ...fallbackCandidates,
+  ];
+  const fitted = await fitGeneratedRoute(request, search, count, waypointLimit, ranked, deps.compute);
   const waypoints = await Promise.all(fitted.candidates.map((candidate) => publicWaypoint(candidate, deps)));
+  const usedPickedCandidate = fitted.candidates.some((candidate) => pickedIds.has(candidate.id));
 
   return routeResponse({
     origin: endpoint(request.origin),
@@ -72,7 +81,7 @@ export async function generateRoutePlan(input, deps) {
     normalRoute: normalSummary(search),
     recommendedRoute: fitted.route,
     waypoints,
-    reason: picked.reason || (waypoints.length > 0
+    reason: (usedPickedCandidate ? picked.reason : null) || (waypoints.length > 0
       ? defaultReason(request.preferences)
       : "条件に合う寄り道候補がなかったため、通常ルートにしました。"),
     travelMode: request.travelMode,
@@ -354,15 +363,22 @@ async function safePick(candidates, text, pick, feedback = {}) {
 async function fitGeneratedRoute(request, search, initialCount, waypointLimit, ranked, compute) {
   const maximum = maximumTotalMinutes(search.baseMinutes, request.timeConstraint);
   const minimum = minimumPreferredTotalMinutes(search.baseMinutes, request.timeConstraint);
+  const computedRoutes = new Map();
+  const computeOnce = async (candidates) => {
+    if (candidates.length === 0) return normalSummary(search);
+    const key = candidates.map((candidate) => candidate.id ?? `${candidate.lat},${candidate.lng}`).join("|");
+    if (!computedRoutes.has(key)) {
+      computedRoutes.set(key, compute(request.origin, request.destination, candidates, request.travelMode));
+    }
+    return computedRoutes.get(key);
+  };
   let count = Math.min(initialCount, ranked.length);
   let fitted = null;
 
   // まず距離別の目安件数を試し、上限超過なら収まるまで減らす。
   while (count >= 0) {
     const candidates = ranked.slice(0, count).sort(routeOrder);
-    const route = candidates.length === 0
-      ? normalSummary(search)
-      : await compute(request.origin, request.destination, candidates, request.travelMode);
+    const route = await computeOnce(candidates);
     if (candidates.length === 0 || route.durationMinutes <= maximum) {
       fitted = { candidates, route };
       break;
@@ -380,7 +396,7 @@ async function fitGeneratedRoute(request, search, initialCount, waypointLimit, r
     if (fitted.candidates.length >= waypointLimit) break;
     if (used.has(candidate.id)) continue;
     const proposed = [...fitted.candidates, candidate].sort(routeOrder);
-    const route = await compute(request.origin, request.destination, proposed, request.travelMode);
+    const route = await computeOnce(proposed);
     if (route.durationMinutes > maximum) continue;
     fitted = { candidates: proposed, route };
     used.add(candidate.id);
@@ -399,7 +415,7 @@ async function fitGeneratedRoute(request, search, initialCount, waypointLimit, r
   for (const candidate of economical) {
     if (alternative.candidates.length >= waypointLimit) break;
     const proposed = [...alternative.candidates, candidate].sort(routeOrder);
-    const route = await compute(request.origin, request.destination, proposed, request.travelMode);
+    const route = await computeOnce(proposed);
     if (route.durationMinutes > maximum) continue;
     alternative = { candidates: proposed, route };
     if (route.durationMinutes >= minimum) break;
