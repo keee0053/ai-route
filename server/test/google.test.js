@@ -14,3 +14,11 @@ test("rest queries avoid service areas for walking and cycling", () => {
   assert.ok(!queriesForGenre("rest", "WALK").includes("サービスエリア"));
   assert.ok(!queriesForGenre("rest", "BICYCLE").includes("サービスエリア"));
 });
+
+test("combined genres search with every selected genre's queries", () => {
+  const queries = queriesForGenre("sweets+view", "DRIVE");
+  assert.ok(queries.includes("カフェ"));
+  assert.ok(queries.includes("展望台"));
+  assert.equal(new Set(queries).size, queries.length);
+  assert.ok(!queriesForGenre("sweets+rest", "WALK").includes("サービスエリア"));
+});

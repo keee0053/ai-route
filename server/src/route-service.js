@@ -64,7 +64,7 @@ export async function generateRoutePlan(input, deps) {
     ? count
     : Math.min(waypointLimit, pool.length);
   const limits = kindLimits(search.baseMinutes);
-  const picked = await pickWaypoints(pool, pickCount, requestText(request), deps.pick, limits);
+  const picked = await pickWaypoints(pool, pickCount, requestText(request), deps.pick, limits, wantedKinds(request.preferences));
   const pickedIds = new Set(picked.candidates.map((candidate) => candidate.id));
   const fallbackCandidates = pool
     .filter((candidate) => !pickedIds.has(candidate.id))
@@ -303,12 +303,18 @@ export function validateEditRequest(input) {
   };
 }
 
+/**
+ * 選ばれた希望に当たるジャンルを全部 "+" でつないで返す(例: 景色+カフェ → "sweets+view")。
+ * 1つに絞ると、景色とカフェを選んでもカフェの検索語しか投げず、カフェの件数上限で経由地が1件になる。
+ * 並びは固定なので、同じ組み合わせは同じ検索キャッシュに当たる
+ */
 export function genreForPreferences(preferences) {
-  if (preferences.includes("cafe")) return "sweets";
-  if (preferences.includes("gourmet")) return "meal";
-  if (preferences.some((value) => ["scenic", "ocean", "night_view", "mountain"].includes(value))) return "view";
-  if (preferences.some((value) => value === "hot_spring" || value === "quiet")) return "rest";
-  return undefined;
+  const genres = [];
+  if (preferences.includes("cafe")) genres.push("sweets");
+  if (preferences.includes("gourmet")) genres.push("meal");
+  if (preferences.some((value) => ["scenic", "ocean", "night_view", "mountain"].includes(value))) genres.push("view");
+  if (preferences.some((value) => value === "hot_spring" || value === "quiet")) genres.push("rest");
+  return genres.length > 0 ? genres.join("+") : undefined;
 }
 
 export function candidatePool(candidates, baseMinutes, constraint, travelMode = "driving") {
@@ -365,7 +371,30 @@ export function buildGoogleMapsUrl(origin, destination, waypoints, travelMode = 
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
-async function pickWaypoints(pool, count, text, pick, limits) {
+const GENRE_KIND = { sweets: "sweets", meal: "meal", view: "spot", rest: "spot" };
+
+/** 希望に当たる場所の種類。景色+カフェなら sweets と spot */
+export function wantedKinds(preferences) {
+  const genre = genreForPreferences(preferences);
+  return genre ? [...new Set(genre.split("+").map((one) => GENRE_KIND[one]))] : [];
+}
+
+/**
+ * 希望の種類の中から選ぶ。まだ1件も無い種類を先に埋め、埋まったら希望の種類全体から選ぶ。
+ * 希望の種類が上限で尽きたら、他の種類でも埋める(カフェだけ選んだとき経由地が1件にならないように)。
+ * こうしないと AI が景色+カフェでカフェ→「カフェ」という名前の食事の店と選び、景色が最後の1件に追いやられる
+ */
+export function narrowToWantedKinds(candidates, selected, kinds) {
+  if (kinds.length === 0) return candidates;
+  const missing = kinds.filter((kind) => !selected.some((item) => item.kind === kind));
+  for (const group of [missing, kinds]) {
+    const narrowed = candidates.filter((item) => group.includes(item.kind));
+    if (narrowed.length > 0) return narrowed;
+  }
+  return candidates;
+}
+
+async function pickWaypoints(pool, count, text, pick, limits, kinds = []) {
   const selected = [];
   const reasons = [];
   let remaining = pool;
@@ -374,7 +403,7 @@ async function pickWaypoints(pool, count, text, pick, limits) {
     // 上限に達した種類(2件目の食事など)は候補から外す
     remaining = remaining.filter((item) => fitsKindLimits(selected, item, limits));
     if (remaining.length === 0) break;
-    const choice = await safePick(remaining, text, pick);
+    const choice = await safePick(narrowToWantedKinds(remaining, selected, kinds), text, pick);
     const candidate = choice.candidate ?? remaining[0];
     selected.push(candidate);
     if (choice.reason) reasons.push(choice.reason);
