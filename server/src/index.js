@@ -1,14 +1,25 @@
 import { computeRoute, findPlace, searchAlongRoute, proxyPhoto, queriesForGenre } from "./google.js";
 import { pickNext, tagWithJev } from "./jev.js";
-import { generateTags, fallbackTags } from "./gemini.js";
-import { editRoutePlan, generateRoutePlan, RouteServiceError } from "./route-service.js";
+import { generateTags, generateTagsBatch, fallbackTags } from "./gemini.js";
+import {
+  candidatePool,
+  editRoutePlan,
+  generateRoutePlan,
+  genreForPreferences,
+  RouteServiceError,
+  validateGenerateRequest,
+} from "./route-service.js";
 import { parseShareText } from "./share-link.js";
 import { clampSize, ORIGIN_MARKER_PNG, staticMapUrl } from "./route-map.js";
 
-// 経由地のタグ。Gemini のキャッシュがあればそれを使う。無ければこの時間だけ待ち、
-// 間に合わなければ Jev のタグ(0.3秒)で返す。Gemini の生成は裏で続けてキャッシュする
-const GEMINI_TAG_WAIT_MS = 800;
-const LATE_TAG_WAIT_MS = 3000;
+// Gemini のタグは応答を待たせずに裏で作る(無料枠 5回/分・1回4〜20秒)。5件ずつまとめて1回で頼む
+const TAG_BATCH_SIZE = 5;
+// シェアを受け取った直後の /search で先に作っておく件数。条件を選んでいる間(10〜30秒)に終わる
+const WARM_ON_SEARCH = 10;
+// ルートを作ったあとに裏で作る件数(経由地の作り残し + 差し替えに出そうな候補)
+const WARM_AFTER_ROUTE = 10;
+// 差し替えに出そうな候補: 経由地の種類ごとにこの件数
+const REPLACEMENTS_PER_KIND = 3;
 
 // Bump this when the shape or filtering of cached data changes.
 const CACHE_VERSION = "v7";
@@ -42,6 +53,7 @@ export default {
               "POST /edit-route",
               "POST /search",
               "POST /tag",
+              "POST /cached-tags",
               "POST /next",
               "GET /photo",
               "GET /route-map",
@@ -63,6 +75,9 @@ export default {
 
         case "POST /tag":
           return await handleTag(request, env, ctx);
+
+        case "POST /cached-tags":
+          return await handleCachedTags(request);
 
         case "POST /next":
           return await handleNext(request, env);
@@ -108,15 +123,37 @@ async function handleParseShare(request, env) {
 
 async function handleGenerateRoute(request, env, ctx) {
   const body = await readJson(request);
-  return json(await generateRoutePlan(body, routeDependencies(request, env, ctx)));
+  const untagged = [];
+  const deps = routeDependencies(request, env, ctx, untagged);
+  const plan = await generateRoutePlan(body, deps);
+  // 経由地の作り残しを先に、次に差し替えで出そうな候補。アプリは少し後に /cached-tags で取り直す
+  ctx.waitUntil((async () => {
+    const replacements = await replacementCandidates(body, plan, deps).catch(() => []);
+    await warmTags([...untagged, ...replacements].slice(0, WARM_AFTER_ROUTE), env);
+  })());
+  return json(plan);
 }
 
 async function handleEditRoute(request, env, ctx) {
   const body = await readJson(request);
-  return json(await editRoutePlan(body, routeDependencies(request, env, ctx)));
+  const untagged = [];
+  const plan = await editRoutePlan(body, routeDependencies(request, env, ctx, untagged));
+  ctx.waitUntil(warmTags(untagged, env));
+  return json(plan);
 }
 
-function routeDependencies(request, env, ctx) {
+/** 差し替え(同じ種類から選ぶ)で次に出そうな候補。検索はキャッシュに当たる */
+async function replacementCandidates(body, plan, deps) {
+  const request = validateGenerateRequest(body);
+  const search = await deps.search(request.origin, request.destination, genreForPreferences(request.preferences), request.travelMode);
+  const used = new Set(plan.waypoints.map((waypoint) => waypoint.placeId));
+  const pool = candidatePool(search.candidates, search.baseMinutes, request.timeConstraint, request.travelMode)
+    .filter((candidate) => !used.has(candidate.id));
+  const kinds = [...new Set(plan.waypoints.map((waypoint) => waypoint.kind).filter(Boolean))];
+  return kinds.flatMap((kind) => pool.filter((candidate) => candidate.kind === kind).slice(0, REPLACEMENTS_PER_KIND));
+}
+
+function routeDependencies(request, env, ctx, untagged = []) {
   return {
     search: (origin, destination, genre, travelMode) => getSearchData(origin, destination, genre, travelMode, env, ctx),
     compute: (origin, destination, intermediates, travelMode) =>
@@ -125,7 +162,7 @@ function routeDependencies(request, env, ctx) {
         travelMode: googleTravelMode(travelMode),
       }),
     pick: (candidates, requestText, feedback) => selectCandidate(candidates, requestText, env, feedback),
-    tags: (candidate) => quickTags(candidate, env, ctx),
+    tags: (candidate) => quickTags(candidate, env, untagged),
     photoUrl: (photoName) => {
       const url = new URL("/photo", request.url);
       url.searchParams.set("name", photoName);
@@ -134,32 +171,84 @@ function routeDependencies(request, env, ctx) {
   };
 }
 
-async function quickTags(candidate, env, ctx) {
-  const wait = (ms) => new Promise((resolve) => setTimeout(() => resolve(null), ms));
-  const gemini = getTagData(candidate, env, ctx);
-  ctx.waitUntil(gemini.catch(() => {}));
-  const jev = env.TYPESAFE_API_KEY
-    ? tagWithJev(env.TYPESAFE_API_KEY, candidate).catch((error) => {
+/**
+ * 経由地のタグ。Gemini のタグができていればそれ、無ければ Jev(0.3秒)、それも駄目なら簡易タグ。
+ * Gemini を待つと遅い(1件4〜20秒)ので待たない。作っていない場所は untagged に積み、応答のあとでまとめて作る
+ */
+async function quickTags(candidate, env, untagged) {
+  const cached = await cachedTagData(candidate.id ?? candidate.placeId);
+  if (cached?.tags?.length) return cached.tags;
+  untagged.push(candidate);
+
+  if (env.TYPESAFE_API_KEY) {
+    try {
+      const judged = await tagWithJev(env.TYPESAFE_API_KEY, candidate);
+      if (judged?.length) return judged;
+    } catch (error) {
       console.warn("Jev tagging failed", error);
-      return null;
-    })
-    : Promise.resolve(null);
+    }
+  }
+  return fallbackTags(candidate);
+}
 
-  const early = await Promise.race([gemini.catch(() => null), wait(GEMINI_TAG_WAIT_MS)]);
-  if (early?.source === "gemini") return early.tags;
+/**
+ * Gemini のタグをまとめて作ってキャッシュに入れる(ctx.waitUntil で応答のあとに走らせる)。
+ * 5件ずつ1回で頼み、各回は並べて投げる。失敗した場所は次の機会(経由地になったとき等)に回す
+ */
+async function warmTags(candidates, env) {
+  if (!env.GEMINI_API_KEY || candidates.length === 0) return;
+  const unique = [...new Map(candidates.map((candidate) => [String(candidate.id ?? candidate.placeId), candidate])).values()];
+  const cached = await Promise.all(unique.map((candidate) => cachedTagData(candidate.id ?? candidate.placeId)));
+  const missing = unique.filter((_, i) => !cached[i]);
+  const batches = [];
+  for (let i = 0; i < missing.length; i += TAG_BATCH_SIZE) batches.push(missing.slice(i, i + TAG_BATCH_SIZE));
 
-  const judged = await jev;
-  if (judged?.length) return judged;
+  await Promise.all(batches.map(async (batch) => {
+    try {
+      const tags = await generateTagsBatch(env.GEMINI_API_KEY, batch);
+      await Promise.all([...tags].map(([id, list]) => putTagData({ id, tags: list, source: "gemini", reason: null })));
+      if (tags.size < batch.length) console.warn(`batch tagging returned ${tags.size}/${batch.length}`);
+    } catch (error) {
+      console.warn("batch tagging failed", String(error?.message ?? error).slice(0, 300));
+    }
+  }));
+}
 
-  const late = await Promise.race([gemini.catch(() => null), wait(LATE_TAG_WAIT_MS)]);
-  return late?.tags ?? fallbackTags(candidate);
+const tagCacheKey = (id) => new Request(`https://ekz.cache/tag/${CACHE_VERSION}/${encodeURIComponent(id)}`);
+
+async function cachedTagData(id) {
+  if (id === undefined || id === null) return null;
+  const hit = await caches.default.match(tagCacheKey(id));
+  return hit ? hit.json() : null;
+}
+
+async function putTagData(data) {
+  const cached = json(data);
+  cached.headers.set("Cache-Control", "public, max-age=604800");
+  await caches.default.put(tagCacheKey(data.id), cached);
+}
+
+/** できあがっている Gemini のタグだけを返す。POST /cached-tags {ids} → {tags: {id: [...]}} */
+async function handleCachedTags(request) {
+  const body = await readJson(request);
+  const ids = Array.isArray(body.ids) ? [...new Set(body.ids.filter((id) => typeof id === "string"))].slice(0, 20) : [];
+  const found = await Promise.all(ids.map((id) => cachedTagData(id)));
+  const tags = {};
+  ids.forEach((id, i) => {
+    if (found[i]?.tags?.length) tags[id] = found[i].tags;
+  });
+  return json({ tags });
 }
 
 /** Legacy endpoint used by older clients and the route preview. */
 async function handleSearch(request, env, ctx) {
   const body = await readJson(request);
   if (!body.origin || !body.destination) return fail("origin と destination が必要です", 400);
-  return json(await getSearchData(body.origin, body.destination, body.genre, body.travelMode, env, ctx));
+  const data = await getSearchData(body.origin, body.destination, body.genre, body.travelMode, env, ctx);
+  // アプリはシェアを受け取った直後にここを呼ぶ。条件を選んでいる間に、選ばれそうな候補(評価順)のタグを作っておく
+  const likely = candidatePool(data.candidates, data.baseMinutes, { type: "none" }, body.travelMode ?? "driving");
+  ctx.waitUntil(warmTags(likely.slice(0, WARM_ON_SEARCH), env));
+  return json(data);
 }
 
 async function getSearchData(origin, destination, genre, travelMode, env, ctx) {
@@ -208,10 +297,8 @@ async function handleTag(request, env, ctx) {
 
 async function getTagData(candidate, env, ctx) {
   const id = candidate.id ?? candidate.placeId;
-  const cacheKey = new Request(`https://ekz.cache/tag/${CACHE_VERSION}/${encodeURIComponent(id)}`);
-  const cache = caches.default;
-  const hit = await cache.match(cacheKey);
-  if (hit) return hit.json();
+  const hit = await cachedTagData(id);
+  if (hit) return hit;
 
   let tags;
   let source = "gemini";
@@ -225,11 +312,7 @@ async function getTagData(candidate, env, ctx) {
   }
 
   const data = { id, tags, source, reason };
-  if (source === "gemini") {
-    const cached = json(data);
-    cached.headers.set("Cache-Control", "public, max-age=604800");
-    ctx.waitUntil(cache.put(cacheKey, cached.clone()));
-  }
+  if (source === "gemini") ctx.waitUntil(putTagData(data));
   return data;
 }
 

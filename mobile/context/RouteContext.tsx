@@ -1,6 +1,6 @@
-import { createContext, type PropsWithChildren, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, type PropsWithChildren, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { GenerateRouteInput, GenerateRouteResponse, Preference, RoutePreview, TimeConstraint, TravelMode } from '@/types/route'
-import { ApiError, generateRoute, getRoutePreview } from '@/services/api'
+import { ApiError, generateRoute, getCachedTags, getRoutePreview } from '@/services/api'
 
 const demoUrl = 'https://www.google.com/maps/dir/?api=1&origin=%E5%A4%A7%E9%98%AA%E9%A7%85&destination=%E7%A5%9E%E6%88%B8%E3%83%8F%E3%83%BC%E3%83%90%E3%83%BC%E3%83%A9%E3%83%B3%E3%83%89'
 
@@ -85,6 +85,30 @@ export function RouteProvider({ children }: PropsWithChildren) {
       setRouteLoading(false)
     }
   }, [googleMapsUrl, updatePreferences])
+
+  // Gemini のタグはサーバが応答のあとに作る(数秒〜20秒)。経由地が変わったら、少し後に取り直して差し替える
+  const waypointIds = result?.waypoints.map((waypoint) => waypoint.placeId).join('|') ?? ''
+  useEffect(() => {
+    if (!waypointIds) return
+    const ids = waypointIds.split('|')
+    const refresh = () => {
+      getCachedTags(ids).then((tags) => {
+        setResult((current) => {
+          if (!current || current.waypoints.map((waypoint) => waypoint.placeId).join('|') !== waypointIds) return current
+          let changed = false
+          const waypoints = current.waypoints.map((waypoint) => {
+            const fresh = tags[waypoint.placeId]
+            if (!fresh || fresh.join('|') === waypoint.tags.join('|')) return waypoint
+            changed = true
+            return { ...waypoint, tags: fresh }
+          })
+          return changed ? { ...current, waypoints } : current
+        })
+      }).catch(() => {})
+    }
+    const timers = [5000, 15000].map((ms) => setTimeout(refresh, ms))
+    return () => timers.forEach(clearTimeout)
+  }, [waypointIds])
 
   const clearError = useCallback(() => setError(null), [])
   const updateResult = useCallback((value: GenerateRouteResponse) => setResult(value), [])

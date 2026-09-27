@@ -102,6 +102,12 @@ export async function editRoute(input: EditRouteRequest): Promise<GenerateRouteR
   return postJson<GenerateRouteResponse>('/edit-route', input)
 }
 
+/** サーバが裏で作り終えた Gemini のタグ(場所ID → タグ)。まだの場所は入っていない */
+export async function getCachedTags(ids: string[]): Promise<Record<string, string[]>> {
+  const response = await postJson<{ tags: Record<string, string[]> }>('/cached-tags', { ids })
+  return response.tags ?? {}
+}
+
 async function searchCandidates(origin: string, destination: string): Promise<SearchResponse> {
   return postJson<SearchResponse>('/search', { origin, destination })
 }

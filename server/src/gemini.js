@@ -9,7 +9,84 @@ const MODEL = "gemini-3.1-flash-lite";
  * Jev は判定専用でテキストを作れないので、ここだけ生成モデルを使う。
  */
 export async function generateTags(apiKey, candidate, count = 10) {
-  const state = [
+  const instruction = [
+    "ドライブ中の寄り道先を選ぶアプリで使う、この場所の特徴タグを作ってください。",
+    `${count}個。日本語。1個は2〜5文字の短い語。`,
+    ...TAG_RULES,
+    "",
+    describe(candidate),
+  ].join("\n");
+
+  const body = await callGemini(apiKey, instruction, {
+    type: "object",
+    properties: { tags: { type: "array", items: { type: "string" } } },
+    required: ["tags"],
+  }, 15000);
+  const tags = findTags(body);
+  if (!tags) throw new Error("Gemini の返答からタグを取り出せませんでした");
+  return cleanTags(tags, count);
+}
+
+/**
+ * 複数の場所のタグを1回の呼び出しでまとめて作る。返り値は 場所ID → タグ の Map(取れなかった場所は入らない)。
+ * 無料枠は 5回/分なので、1件ずつ呼ぶとすぐ詰まる。5件まとめて約6.5秒(9/23 実測、1件ずつなら各4秒〜)
+ */
+export async function generateTagsBatch(apiKey, candidates, count = 10) {
+  const byId = new Map(candidates.map((candidate) => [candidateId(candidate), candidate]));
+  const instruction = [
+    "ドライブ中の寄り道先を選ぶアプリで使う、各場所の特徴タグを作ってください。",
+    `場所ごとに${count}個。日本語。1個は2〜5文字の短い語。id は下に書いたものをそのまま返す。`,
+    ...TAG_RULES,
+    "",
+    ...[...byId].flatMap(([id, candidate]) => [`### id: ${id}`, describe(candidate), ""]),
+  ].join("\n");
+
+  const body = await callGemini(apiKey, instruction, {
+    type: "object",
+    properties: {
+      places: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { id: { type: "string" }, tags: { type: "array", items: { type: "string" } } },
+          required: ["id", "tags"],
+        },
+      },
+    },
+    required: ["places"],
+  }, 25000);
+  const places = findPlaces(body);
+  if (!places) throw new Error("Gemini の返答から places を取り出せませんでした");
+
+  const result = new Map();
+  for (const place of places) {
+    // 知らない id(書き換えられた id)は捨てる
+    if (!byId.has(place?.id) || !Array.isArray(place.tags)) continue;
+    const tags = cleanTags(place.tags, count);
+    if (tags.length > 0) result.set(place.id, tags);
+  }
+  return result;
+}
+
+const TAG_RULES = [
+  "",
+  "大事な条件:",
+  "- **大雑把なジャンル・性質のレベルにする。** 例: 和食, 魚, 甘いもの, 景色, 静か, 子連れ向き, 安い, 屋外",
+  "- 細かすぎる特徴は入れない。",
+  "  悪い例: 自家焙煎珈琲, 英語対応可, エレベーター完備, 常連客多め, 海上約47メートル",
+  "  良い例: カフェ, 甘いもの, 落ち着く, 景色, 屋内",
+  "- 店名・地名・施設名はタグにしない",
+  "- どこにでも当てはまる語(おすすめ, 人気, 良い)は入れない",
+  "- 良い点だけでなく、人によっては避けたくなる性質も入れる(例: 混む, 狭い, 高い, 歩く)",
+  "- 同じ意味のタグを重複させない",
+  "",
+  "この粒度で、利用者が『これは好き』『これは嫌』と一目で判断できる語にしてください。",
+];
+
+const candidateId = (candidate) => String(candidate.id ?? candidate.placeId);
+
+function describe(candidate) {
+  return [
     `名前: ${candidate.name}`,
     `種別: ${candidate.category}`,
     candidate.rating ? `評価: ${candidate.rating} (${candidate.reviewCount ?? 0}件)` : null,
@@ -21,58 +98,60 @@ export async function generateTags(apiKey, candidate, count = 10) {
   ]
     .filter((l) => l !== null)
     .join("\n");
+}
 
-  const instruction = [
-    "ドライブ中の寄り道先を選ぶアプリで使う、この場所の特徴タグを作ってください。",
-    `${count}個。日本語。1個は2〜5文字の短い語。`,
-    "",
-    "大事な条件:",
-    "- **大雑把なジャンル・性質のレベルにする。** 例: 和食, 魚, 甘いもの, 景色, 静か, 子連れ向き, 安い, 屋外",
-    "- 細かすぎる特徴は入れない。",
-    "  悪い例: 自家焙煎珈琲, 英語対応可, エレベーター完備, 常連客多め, 海上約47メートル",
-    "  良い例: カフェ, 甘いもの, 落ち着く, 景色, 屋内",
-    "- 店名・地名・施設名はタグにしない",
-    "- どこにでも当てはまる語(おすすめ, 人気, 良い)は入れない",
-    "- 良い点だけでなく、人によっては避けたくなる性質も入れる(例: 混む, 狭い, 高い, 歩く)",
-    "- 同じ意味のタグを重複させない",
-    "",
-    "この粒度で、利用者が『これは好き』『これは嫌』と一目で判断できる語にしてください。",
-    "",
-    state,
-  ].join("\n");
-
+async function callGemini(apiKey, input, schema, timeoutMs) {
   const res = await fetch(GEMINI_URL, {
     method: "POST",
     headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: MODEL,
-      input: instruction,
+      input,
       // タグ付けは難しい仕事ではない。思考を減らして待ち時間を削る
       generation_config: { thinking_level: "low" },
-      response_format: {
-        type: "text",
-        mime_type: "application/json",
-        schema: {
-          type: "object",
-          properties: { tags: { type: "array", items: { type: "string" } } },
-          required: ["tags"],
-        },
-      },
+      response_format: { type: "text", mime_type: "application/json", schema },
     }),
     // 無料枠は詰まりやすい。待たされるくらいならフォールバックに落とす
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
-
   if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return res.json();
+}
 
-  const body = await res.json();
-  const tags = findTags(body);
-  if (!tags) throw new Error("Gemini の返答からタグを取り出せませんでした");
-
-  // 念のため重複と長すぎるものを落とす
+/** 念のため重複と長すぎるものを落とす */
+function cleanTags(tags, count) {
   return [...new Set(tags.map((t) => String(t).trim()))]
     .filter((t) => t.length > 0 && t.length <= 12)
     .slice(0, count);
+}
+
+/** findTags と同じ考え方で、places の配列を探す */
+export function findPlaces(node) {
+  if (typeof node === "string") {
+    if (!node.includes("places")) return null;
+    try {
+      const parsed = JSON.parse(node);
+      return Array.isArray(parsed?.places) ? parsed.places : null;
+    } catch {
+      return null;
+    }
+  }
+  if (Array.isArray(node)) {
+    for (const v of node) {
+      const found = findPlaces(v);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (node && typeof node === "object") {
+    if (Array.isArray(node.places) && node.places.every((p) => p && typeof p === "object")) return node.places;
+    for (const k of Object.keys(node)) {
+      if (k === "usage" || k === "signature") continue;
+      const found = findPlaces(node[k]);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 /**
