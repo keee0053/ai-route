@@ -164,68 +164,61 @@ export function GoogleMapsEntry({
               {opening
                 ? <ActivityIndicator color="#FFFFFF" size="small" />
                 : <ExternalLink size={19} color="#FFFFFF" strokeWidth={2.3} />}
-            </Pressable>
-          </View>
-        </View>
-
-        <View accessibilityRole="text" style={styles.dividerRow}>
-          <View style={styles.divider} />
-          <Text style={styles.dividerText}>または</Text>
-          <View style={styles.divider} />
-        </View>
-
-        <View style={[styles.card, styles.urlCard]}>
-          <View style={[styles.inputShell, hasUrl && styles.inputShellActive, error && styles.inputShellError]}>
-            <Link2 size={19} color={hasUrl ? '#0879E1' : '#8090A3'} strokeWidth={2.2} />
-            <TextInput
-              accessibilityLabel="Googleマップの共有URL"
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!loading}
-              keyboardType="url"
-              onChangeText={updateUrl}
-              onSubmitEditing={() => void importRoute()}
-              placeholder="共有URLを貼り付け"
-              placeholderTextColor="#8292A5"
-              returnKeyType="go"
-              selectTextOnFocus
-              style={styles.input}
-              value={url}
-            />
-            {hasUrl ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Googleマップのルートを読み込む"
-                accessibilityState={{ busy: loading, disabled: loading }}
-                disabled={loading}
-                hitSlop={8}
-                onPress={() => void importRoute()}
-                style={({ pressed }) => [styles.submitButton, pressed && styles.buttonPressed]}
-              >
-                {loading
-                  ? <ActivityIndicator color="#FFFFFF" size="small" />
-                  : <ArrowRight size={20} color="#FFFFFF" strokeWidth={2.5} />}
               </Pressable>
-            ) : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="クリップボードからURLをペースト"
-                accessibilityState={{ busy: pasting }}
-                hitSlop={8}
-                onPress={() => void pasteUrl()}
-                style={({ pressed }) => [styles.pasteButton, pressed && styles.pasteButtonPressed]}
-              >
-                <ClipboardPaste size={15} color="#0879E1" strokeWidth={2.2} />
-                <Text style={styles.pasteText}>{pasting ? '確認中' : 'ペースト'}</Text>
-              </Pressable>
-            )}
           </View>
+          <View style={[styles.card, styles.urlCard]}>
+            <View style={[styles.inputShell, hasUrl && styles.inputShellActive, error && styles.inputShellError]}>
+              <Link2 size={19} color={hasUrl ? '#0879E1' : '#8090A3'} strokeWidth={2.2} />
+              <TextInput
+                accessibilityLabel="Googleマップの共有URL"
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!loading}
+                keyboardType="url"
+                onChangeText={updateUrl}
+                onSubmitEditing={() => void importRoute()}
+                placeholder="共有URLを貼り付け"
+                placeholderTextColor="#8292A5"
+                returnKeyType="go"
+                selectTextOnFocus
+                style={styles.input}
+                value={url}
+              />
+              {hasUrl ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Googleマップのルートを読み込む"
+                  accessibilityState={{ busy: loading, disabled: loading }}
+                  disabled={loading}
+                  hitSlop={8}
+                  onPress={() => void importRoute()}
+                  style={({ pressed }) => [styles.submitButton, pressed && styles.buttonPressed]}
+                >
+                  {loading
+                    ? <ActivityIndicator color="#FFFFFF" size="small" />
+                    : <ArrowRight size={20} color="#FFFFFF" strokeWidth={2.5} />}
+                </Pressable>
+              ) : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="クリップボードからURLをペースト"
+                  accessibilityState={{ busy: pasting }}
+                  hitSlop={8}
+                  onPress={() => void pasteUrl()}
+                  style={({ pressed }) => [styles.pasteButton, pressed && styles.pasteButtonPressed]}
+                >
+                  <ClipboardPaste size={15} color="#0879E1" strokeWidth={2.2} />
+                  <Text style={styles.pasteText}>{pasting ? '確認中' : 'ペースト'}</Text>
+                </Pressable>
+              )}
+            </View>
 
-          {error ? (
-            <Text accessibilityLiveRegion="polite" accessibilityRole="alert" style={styles.errorText}>
-              {error}
-            </Text>
-          ) : null}
+            {error ? (
+              <Text accessibilityLiveRegion="polite" accessibilityRole="alert" style={styles.errorText}>
+                {error}
+              </Text>
+            ) : null}
+          </View>
         </View>
       </View>
     </View>
@@ -240,15 +233,12 @@ const styles = StyleSheet.create({
   title: { color: '#1D232C', fontSize: 24, fontWeight: '800', lineHeight: 32, textAlign: 'center' },
   subtitle: { color: '#5F6F82', fontSize: 14, lineHeight: 21, textAlign: 'center' },
   card: { padding: 18, gap: 15, borderWidth: 1, borderColor: '#E2EEFC', borderRadius: 20, backgroundColor: '#FFFFFF', shadowColor: '#44719B', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.07, shadowRadius: 14, elevation: 2 },
-  mainAction: { flex: 1, justifyContent: 'center' },
+  mainAction: { flex: 1, justifyContent: 'center', gap: 12 },
   openCard: { padding: 18 },
   urlCard: { padding: 14, gap: 9 },
   primaryButton: { minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 11, paddingHorizontal: 18, borderRadius: 14, backgroundColor: '#0783F2' },
   primaryButtonText: { flexShrink: 1, color: '#FFFFFF', fontSize: 17, fontWeight: '800', textAlign: 'center' },
   buttonPressed: { opacity: 0.78 },
-  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 10 },
-  divider: { flex: 1, height: 1, backgroundColor: '#D8E7F5' },
-  dividerText: { color: '#77889A', fontSize: 12, fontWeight: '600' },
   inputShell: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 10, paddingLeft: 14, paddingRight: 9, borderWidth: 1, borderColor: '#DCE8F3', borderRadius: 12, backgroundColor: '#F4F9FD' },
   inputShellActive: { borderColor: '#49A4F4', backgroundColor: '#F8FCFF' },
   inputShellError: { borderColor: '#D94C4C' },
