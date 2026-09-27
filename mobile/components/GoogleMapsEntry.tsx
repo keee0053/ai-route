@@ -16,8 +16,6 @@ import {
   ExternalLink,
   Link2,
   Map,
-  Route,
-  Share2,
 } from 'lucide-react-native'
 
 const GOOGLE_MAPS_URL = 'https://www.google.com/maps/@?api=1&map_action=map'
@@ -145,10 +143,6 @@ export function GoogleMapsEntry({
 
       <View style={styles.content}>
         <View style={styles.header}>
-          <View style={styles.badge}>
-            <Route size={14} color="#0879E1" strokeWidth={2.5} />
-            <Text style={styles.badgeText}>ルート連携</Text>
-          </View>
           <Text accessibilityRole="header" style={styles.title}>Googleマップでルートを選ぶ</Text>
           <Text style={styles.subtitle}>保存したルートを取り込んでナビを開始</Text>
         </View>
@@ -170,11 +164,6 @@ export function GoogleMapsEntry({
               ? <ActivityIndicator color="#FFFFFF" size="small" />
               : <ExternalLink size={19} color="#FFFFFF" strokeWidth={2.3} />}
           </Pressable>
-
-          <View style={styles.helperRow}>
-            <Share2 size={16} color="#66788D" strokeWidth={2} />
-            <Text style={styles.helperText}>Googleマップでルートを共有し、このアプリを選択</Text>
-          </View>
         </View>
 
         <View accessibilityRole="text" style={styles.dividerRow}>
@@ -261,16 +250,12 @@ const styles = StyleSheet.create({
   dot: { position: 'absolute', width: 2, height: 2, borderRadius: 1, backgroundColor: '#CFE3F7', opacity: 0.72 },
   content: { maxWidth: 520, alignSelf: 'stretch', paddingHorizontal: 20, paddingTop: 30, paddingBottom: 36, gap: 18 },
   header: { alignItems: 'center', gap: 8, marginBottom: 2 },
-  badge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: '#E5F2FF' },
-  badgeText: { color: '#0879E1', fontSize: 12, fontWeight: '700' },
   title: { color: '#1D232C', fontSize: 24, fontWeight: '800', lineHeight: 32, textAlign: 'center' },
   subtitle: { color: '#5F6F82', fontSize: 14, lineHeight: 21, textAlign: 'center' },
   card: { padding: 18, gap: 15, borderWidth: 1, borderColor: '#E2EEFC', borderRadius: 20, backgroundColor: '#FFFFFF', shadowColor: '#44719B', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.07, shadowRadius: 14, elevation: 2 },
   primaryButton: { minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 11, paddingHorizontal: 18, borderRadius: 14, backgroundColor: '#0783F2' },
   primaryButtonText: { flexShrink: 1, color: '#FFFFFF', fontSize: 17, fontWeight: '800', textAlign: 'center' },
   buttonPressed: { opacity: 0.78 },
-  helperRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 4 },
-  helperText: { flexShrink: 1, color: '#66788D', fontSize: 12, lineHeight: 18, textAlign: 'center' },
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 10 },
   divider: { flex: 1, height: 1, backgroundColor: '#D8E7F5' },
   dividerText: { color: '#77889A', fontSize: 12, fontWeight: '600' },
