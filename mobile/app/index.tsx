@@ -1,6 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
 import { router } from 'expo-router'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { PrimaryButton } from '@/components/PrimaryButton'
 import { GoogleMapsEntry } from '@/components/GoogleMapsEntry'
@@ -67,7 +67,12 @@ export default function SharedRouteScreen() {
 
         <View style={[styles.body, !preview && !previewLoading && styles.entryBody]}>
           {!preview && !previewLoading ? <GoogleMapsEntry /> : null}
-          {previewLoading ? <Text accessibilityRole="text" style={styles.connectionText}>ルートを確認中…</Text> : null}
+          {previewLoading ? (
+            <View style={styles.loading}>
+              <ActivityIndicator size="large" color={colors.brand} />
+              <Text accessibilityRole="text" style={styles.loadingText}>共有されたルートを確認しています</Text>
+            </View>
+          ) : null}
           {preview ? (
             <>
             <View style={styles.headingBlock}>
@@ -185,6 +190,8 @@ const styles = StyleSheet.create({
   checking: { backgroundColor: colors.faint },
   connectionText: { color: colors.muted, fontSize: 12 },
   retryLink: { color: colors.brandDark, fontSize: 12, fontWeight: '700', paddingVertical: 6, paddingHorizontal: 4 },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
+  loadingText: { color: colors.muted, fontSize: 14 },
   errorBlock: { gap: 10 },
   errorText: { color: colors.danger, fontSize: 13, lineHeight: 19 },
   actions: { gap: 10, marginTop: 'auto' },

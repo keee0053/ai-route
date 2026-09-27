@@ -53,6 +53,10 @@ export default function PreferencesScreen() {
     }
   }, [])
 
+  // 失敗の表示を、戻った先の画面に持ち越さない
+  const { clearError } = route
+  useEffect(() => clearError, [clearError])
+
   const toggle = (chip: Preference) => setSelected((current) =>
     current.includes(chip) ? current.filter((item) => item !== chip) : [...current, chip],
   )
@@ -151,14 +155,18 @@ export default function PreferencesScreen() {
         </View>
 
         <View style={styles.footer}>
-          <PrimaryButton disabled={(time.type === 'total_time' && Number(totalMinutes) < 1)} onPress={() => {
-            route.updatePreferences({
+          {/* 生成は数秒で終わるので、専用のロード画面は出さずにボタンで待つ */}
+          {route.error ? <Text accessibilityRole="alert" style={styles.errorText}>{route.error.message}</Text> : null}
+          <PrimaryButton disabled={(time.type === 'total_time' && Number(totalMinutes) < 1)} loading={route.routeLoading} onPress={() => {
+            Keyboard.dismiss()
+            void route.createRoute({
               preferences: selected,
               freeText,
               timeConstraint: time.type === 'total_time' ? { type: 'total_time', minutes: Number(totalMinutes) } : time,
               travelMode,
+            }).then((success) => {
+              if (success) router.push('/result')
             })
-            router.push('/generating')
           }}>AIでルートを作る</PrimaryButton>
           <Text style={styles.summary}>{selected.length === 0 ? 'おまかせ' : selected.map((value) => chips.find((chip) => chip.value === value)?.label).join('・')}で探します</Text>
         </View>
@@ -199,4 +207,5 @@ const styles = StyleSheet.create({
   totalTimeSuffix: { color: colors.text, fontSize: 14, fontWeight: '600' },
   footer: { gap: 10, marginTop: 26 },
   summary: { color: colors.faint, fontSize: 12, textAlign: 'center' },
+  errorText: { color: colors.danger, fontSize: 13, lineHeight: 19 },
 })

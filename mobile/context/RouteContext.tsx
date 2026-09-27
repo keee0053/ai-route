@@ -4,6 +4,8 @@ import { ApiError, generateRoute, getRoutePreview } from '@/services/api'
 
 const demoUrl = 'https://www.google.com/maps/dir/?api=1&origin=%E5%A4%A7%E9%98%AA%E9%A7%85&destination=%E7%A5%9E%E6%88%B8%E3%83%8F%E3%83%BC%E3%83%90%E3%83%BC%E3%83%A9%E3%83%B3%E3%83%89'
 
+export type RouteConditions = { preferences: Preference[]; freeText: string; timeConstraint: TimeConstraint; travelMode: TravelMode }
+
 type RouteState = {
   googleMapsUrl: string
   preview: RoutePreview | null
@@ -16,8 +18,9 @@ type RouteState = {
   routeLoading: boolean
   error: ApiError | null
   receiveSharedUrl: (url: string) => Promise<boolean>
-  updatePreferences: (value: { preferences: Preference[]; freeText: string; timeConstraint: TimeConstraint; travelMode: TravelMode }) => void
-  createRoute: () => Promise<boolean>
+  updatePreferences: (value: RouteConditions) => void
+  /** 条件を覚えてからルートを作る(state の反映を待たずに、渡した条件で送る) */
+  createRoute: (conditions: RouteConditions) => Promise<boolean>
   updateResult: (value: GenerateRouteResponse) => void
   clearError: () => void
 }
@@ -41,6 +44,8 @@ export function RouteProvider({ children }: PropsWithChildren) {
     setPreviewLoading(true)
     setError(null)
     setResult(null)
+    // 前のルートを出したまま読み込むと、新しい共有を受け取ったように見えない
+    setPreview(null)
     try {
       setPreview(await getRoutePreview(url))
       return true
@@ -53,14 +58,15 @@ export function RouteProvider({ children }: PropsWithChildren) {
     }
   }, [])
 
-  const updatePreferences = useCallback((value: { preferences: Preference[]; freeText: string; timeConstraint: TimeConstraint; travelMode: TravelMode }) => {
+  const updatePreferences = useCallback((value: RouteConditions) => {
     setPreferences(value.preferences)
     setFreeText(value.freeText)
     setTimeConstraint(value.timeConstraint)
     setTravelMode(value.travelMode)
   }, [])
 
-  const createRoute = useCallback(async () => {
+  const createRoute = useCallback(async (conditions: RouteConditions) => {
+    updatePreferences(conditions)
     if (!googleMapsUrl) {
       setError(new ApiError('Google Mapsからルートを共有してください。', 'MAPS_URL_PARSE_FAILED'))
       return false
@@ -69,7 +75,7 @@ export function RouteProvider({ children }: PropsWithChildren) {
     setError(null)
     setResult(null)
     try {
-      const input: GenerateRouteInput = { googleMapsUrl, preferences, freeText, timeConstraint, travelMode }
+      const input: GenerateRouteInput = { googleMapsUrl, ...conditions }
       setResult(await generateRoute(input))
       return true
     } catch (caught) {
@@ -78,7 +84,7 @@ export function RouteProvider({ children }: PropsWithChildren) {
     } finally {
       setRouteLoading(false)
     }
-  }, [freeText, googleMapsUrl, preferences, timeConstraint, travelMode])
+  }, [googleMapsUrl, updatePreferences])
 
   const clearError = useCallback(() => setError(null), [])
   const updateResult = useCallback((value: GenerateRouteResponse) => setResult(value), [])
