@@ -303,12 +303,18 @@ export function validateEditRequest(input) {
   };
 }
 
+/**
+ * 選ばれた希望に当たるジャンルを全部 "+" でつないで返す(例: 景色+カフェ → "sweets+view")。
+ * 1つに絞ると、景色とカフェを選んでもカフェの検索語しか投げず、カフェの件数上限で経由地が1件になる。
+ * 並びは固定なので、同じ組み合わせは同じ検索キャッシュに当たる
+ */
 export function genreForPreferences(preferences) {
-  if (preferences.includes("cafe")) return "sweets";
-  if (preferences.includes("gourmet")) return "meal";
-  if (preferences.some((value) => ["scenic", "ocean", "night_view", "mountain"].includes(value))) return "view";
-  if (preferences.some((value) => value === "hot_spring" || value === "quiet")) return "rest";
-  return undefined;
+  const genres = [];
+  if (preferences.includes("cafe")) genres.push("sweets");
+  if (preferences.includes("gourmet")) genres.push("meal");
+  if (preferences.some((value) => ["scenic", "ocean", "night_view", "mountain"].includes(value))) genres.push("view");
+  if (preferences.some((value) => value === "hot_spring" || value === "quiet")) genres.push("rest");
+  return genres.length > 0 ? genres.join("+") : undefined;
 }
 
 export function candidatePool(candidates, baseMinutes, constraint, travelMode = "driving") {

@@ -8,6 +8,7 @@ import {
   fitsKindLimits,
   kindLimits,
   generateRoutePlan,
+  genreForPreferences,
   maximumGeneratedWaypointCount,
   RouteServiceError,
 } from "../src/route-service.js";
@@ -611,4 +612,12 @@ test("kindLimits allows a second meal only on long routes", () => {
   assert.equal(fitsKindLimits([{ kind: "meal" }], { kind: "meal" }, kindLimits(60)), false);
   assert.equal(fitsKindLimits([{ kind: "meal" }], { kind: "spot" }, kindLimits(60)), true);
   assert.equal(fitsKindLimits([{ kind: "meal" }], { kind: null }, kindLimits(60)), true);
+});
+
+test("genreForPreferences keeps every selected genre instead of only the first", () => {
+  assert.equal(genreForPreferences(["scenic", "cafe"]), "sweets+view");
+  assert.equal(genreForPreferences(["cafe", "scenic"]), "sweets+view");
+  assert.equal(genreForPreferences(["cafe"]), "sweets");
+  assert.equal(genreForPreferences(["detour"]), undefined);
+  assert.equal(genreForPreferences([]), undefined);
 });

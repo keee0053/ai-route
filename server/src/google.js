@@ -50,8 +50,16 @@ export function placeKind(primaryType) {
   return SWEETS.test(type) ? "sweets" : "meal";
 }
 
+/** genre は1つか、"sweets+view" のように "+" でつないだ複数。複数なら各ジャンルの検索語を重複なしで合わせる */
 export function queriesForGenre(genre, travelMode = "DRIVE") {
   if (!genre) return MODE_DEFAULT_QUERIES[travelMode] ?? DEFAULT_QUERIES;
+  if (genre.includes("+")) {
+    return [...new Set(genre.split("+").flatMap((one) => queriesForSingleGenre(one, travelMode)))];
+  }
+  return queriesForSingleGenre(genre, travelMode);
+}
+
+function queriesForSingleGenre(genre, travelMode) {
   if (genre === "rest" && travelMode === "WALK") return ["公園", "カフェ", "銭湯", "休憩スポット"];
   if (genre === "rest" && travelMode === "BICYCLE") return ["公園", "カフェ", "道の駅", "サイクルステーション"];
   return GENRE_QUERIES[genre] ?? DEFAULT_QUERIES;
