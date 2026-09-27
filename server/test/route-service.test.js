@@ -10,6 +10,8 @@ import {
   generateRoutePlan,
   genreForPreferences,
   maximumGeneratedWaypointCount,
+  narrowToWantedKinds,
+  wantedKinds,
   RouteServiceError,
 } from "../src/route-service.js";
 
@@ -620,4 +622,18 @@ test("genreForPreferences keeps every selected genre instead of only the first",
   assert.equal(genreForPreferences(["cafe"]), "sweets");
   assert.equal(genreForPreferences(["detour"]), undefined);
   assert.equal(genreForPreferences([]), undefined);
+});
+
+test("wanted kinds fill each selected preference before repeating one", () => {
+  assert.deepEqual(wantedKinds(["scenic", "cafe"]), ["sweets", "spot"]);
+  assert.deepEqual(wantedKinds([]), []);
+  const cafe = { id: "c", kind: "sweets" };
+  const diner = { id: "d", kind: "meal" };
+  const park = { id: "p", kind: "spot" };
+  const kinds = ["sweets", "spot"];
+  assert.deepEqual(narrowToWantedKinds([cafe, diner, park], [], kinds), [cafe, park]);
+  assert.deepEqual(narrowToWantedKinds([diner, park], [cafe], kinds), [park]);
+  // 希望の種類が尽きたら他の種類で埋める
+  assert.deepEqual(narrowToWantedKinds([diner], [cafe], ["sweets"]), [diner]);
+  assert.deepEqual(narrowToWantedKinds([cafe, diner], [], []), [cafe, diner]);
 });
