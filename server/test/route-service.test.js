@@ -94,6 +94,64 @@ test("generateRoutePlan drops to one waypoint when two exceed the time constrain
   assert.equal(result.recommendedRoute.durationMinutes, 58);
 });
 
+test("generateRoutePlan tries candidates outside the initial AI selection before returning no detour", async () => {
+  const available = Array.from({ length: 4 }, (_, index) => ({
+    id: `candidate-${index}`,
+    name: `候補${index + 1}`,
+    category: "公園",
+    lat: 34.6 + index * 0.01,
+    lng: 135.1 + index * 0.01,
+    rating: 4.9 - index * 0.1,
+    reviewCount: 400 - index,
+    detourMinutes: 10,
+    routeRatio: 0.2 + index * 0.15,
+    offRouteKm: 1,
+  }));
+  const result = await generateRoutePlan(
+    { ...generateInput, timeConstraint: { type: "extra_time", minutes: 15 } },
+    dependencies({
+      search: async () => ({ baseMinutes: 44, distanceKm: 38.7, candidates: available }),
+      compute: async (_origin, _destination, waypoints) => ({
+        durationMinutes: waypoints.length === 1 && waypoints[0].id === "candidate-3" ? 54 : 80,
+        distanceMeters: 41000,
+      }),
+    }),
+  );
+
+  assert.deepEqual(result.waypoints.map((waypoint) => waypoint.placeId), ["candidate-3"]);
+  assert.equal(result.recommendedRoute.extraMinutes, 10);
+});
+
+test("generateRoutePlan returns no detour only after every candidate exceeds the time constraint", async () => {
+  const attemptedSingles = new Set();
+  const available = Array.from({ length: 4 }, (_, index) => ({
+    id: `too-long-${index}`,
+    name: `遠い候補${index + 1}`,
+    category: "観光名所",
+    lat: 34.6 + index * 0.01,
+    lng: 135.1 + index * 0.01,
+    rating: 4.9 - index * 0.1,
+    reviewCount: 400 - index,
+    detourMinutes: 10,
+    routeRatio: 0.2 + index * 0.15,
+    offRouteKm: 1,
+  }));
+  const result = await generateRoutePlan(
+    { ...generateInput, timeConstraint: { type: "extra_time", minutes: 15 } },
+    dependencies({
+      search: async () => ({ baseMinutes: 44, distanceKm: 38.7, candidates: available }),
+      compute: async (_origin, _destination, waypoints) => {
+        if (waypoints.length === 1) attemptedSingles.add(waypoints[0].id);
+        return { durationMinutes: 80, distanceMeters: 41000 };
+      },
+    }),
+  );
+
+  assert.deepEqual([...attemptedSingles].sort(), available.map((candidate) => candidate.id).sort());
+  assert.deepEqual(result.waypoints, []);
+  assert.equal(result.recommendedRoute.extraMinutes, 0);
+});
+
 test("automaticWaypointCount grows from two to five with route length", () => {
   assert.equal(automaticWaypointCount(20, { type: "none" }, 10), 2);
   assert.equal(automaticWaypointCount(60, { type: "none" }, 10), 3);
