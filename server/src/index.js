@@ -313,7 +313,7 @@ async function handleRouteMap(request, url, env, ctx) {
     width: clampSize(url.searchParams.get("w"), 390),
     height: clampSize(url.searchParams.get("h"), 300),
     // 画像を変えたら v を上げる(Google がアイコンを URL ごとにキャッシュするため)
-    originIconUrl: new URL("/marker/origin.png?v=3", url).toString(),
+    originIconUrl: new URL("/marker/origin.png?v=4", url).toString(),
   }));
   if (!image.ok) {
     // Static Maps API が有効になっていないと 403。アプリは飾りの地図に戻す
