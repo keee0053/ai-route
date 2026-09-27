@@ -10,8 +10,8 @@ import {
   generateRoutePlan,
   genreForPreferences,
   maximumGeneratedWaypointCount,
-  narrowToWantedKinds,
-  wantedKinds,
+  narrowToWantedGenres,
+  wantedGenres,
   RouteServiceError,
 } from "../src/route-service.js";
 
@@ -621,19 +621,26 @@ test("genreForPreferences keeps every selected genre instead of only the first",
   assert.equal(genreForPreferences(["cafe", "scenic"]), "sweets+view");
   assert.equal(genreForPreferences(["cafe"]), "sweets");
   assert.equal(genreForPreferences(["detour"]), undefined);
+  assert.equal(genreForPreferences(["hot_spring"]), "onsen");
+  assert.equal(genreForPreferences(["quiet", "hot_spring"]), "onsen+quiet");
   assert.equal(genreForPreferences([]), undefined);
 });
 
-test("wanted kinds fill each selected preference before repeating one", () => {
-  assert.deepEqual(wantedKinds(["scenic", "cafe"]), ["sweets", "spot"]);
-  assert.deepEqual(wantedKinds([]), []);
-  const cafe = { id: "c", kind: "sweets" };
+test("wanted genres fill each selected preference before repeating one", () => {
+  assert.deepEqual(wantedGenres(["scenic", "cafe"]), ["sweets", "view"]);
+  assert.deepEqual(wantedGenres(["scenic", "hot_spring"]), ["view", "onsen"]);
+  assert.deepEqual(wantedGenres([]), []);
+  const cafe = { id: "c", kind: "sweets", genre: "sweets" };
   const diner = { id: "d", kind: "meal" };
-  const park = { id: "p", kind: "spot" };
-  const kinds = ["sweets", "spot"];
-  assert.deepEqual(narrowToWantedKinds([cafe, diner, park], [], kinds), [cafe, park]);
-  assert.deepEqual(narrowToWantedKinds([diner, park], [cafe], kinds), [park]);
-  // 希望の種類が尽きたら他の種類で埋める
-  assert.deepEqual(narrowToWantedKinds([diner], [cafe], ["sweets"]), [diner]);
-  assert.deepEqual(narrowToWantedKinds([cafe, diner], [], []), [cafe, diner]);
+  const tower = { id: "t", kind: "spot", genre: "view" };
+  const onsen = { id: "o", kind: "spot", genre: "onsen" };
+  // 温泉と展望台は同じ spot でも、検索語のジャンルで別の希望として埋める
+  assert.deepEqual(narrowToWantedGenres([tower, onsen], [tower], ["view", "onsen"]), [onsen]);
+  assert.deepEqual(narrowToWantedGenres([cafe, diner, tower], [], ["sweets", "view"]), [cafe, tower]);
+  // ジャンルを付ける前のキャッシュは種類で見る
+  const oldPark = { id: "p", kind: "spot" };
+  assert.deepEqual(narrowToWantedGenres([diner, oldPark], [cafe], ["sweets", "view"]), [oldPark]);
+  // 希望のジャンルが尽きたら他の候補で埋める
+  assert.deepEqual(narrowToWantedGenres([diner], [cafe], ["sweets"]), [diner]);
+  assert.deepEqual(narrowToWantedGenres([cafe, diner], [], []), [cafe, diner]);
 });

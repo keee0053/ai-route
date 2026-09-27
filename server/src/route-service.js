@@ -64,7 +64,7 @@ export async function generateRoutePlan(input, deps) {
     ? count
     : Math.min(waypointLimit, pool.length);
   const limits = kindLimits(search.baseMinutes);
-  const picked = await pickWaypoints(pool, pickCount, requestText(request), deps.pick, limits, wantedKinds(request.preferences));
+  const picked = await pickWaypoints(pool, pickCount, requestText(request), deps.pick, limits, wantedGenres(request.preferences));
   const pickedIds = new Set(picked.candidates.map((candidate) => candidate.id));
   const fallbackCandidates = pool
     .filter((candidate) => !pickedIds.has(candidate.id))
@@ -313,7 +313,9 @@ export function genreForPreferences(preferences) {
   if (preferences.includes("cafe")) genres.push("sweets");
   if (preferences.includes("gourmet")) genres.push("meal");
   if (preferences.some((value) => ["scenic", "ocean", "night_view", "mountain"].includes(value))) genres.push("view");
-  if (preferences.some((value) => value === "hot_spring" || value === "quiet")) genres.push("rest");
+  // 温泉・静かな場所を rest(道の駅・サービスエリア・お土産)で探すと、直売所やショッピングモールしか出ない
+  if (preferences.includes("hot_spring")) genres.push("onsen");
+  if (preferences.includes("quiet")) genres.push("quiet");
   return genres.length > 0 ? genres.join("+") : undefined;
 }
 
@@ -371,30 +373,39 @@ export function buildGoogleMapsUrl(origin, destination, waypoints, travelMode = 
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
-const GENRE_KIND = { sweets: "sweets", meal: "meal", view: "spot", rest: "spot" };
+const GENRE_KIND = { sweets: "sweets", meal: "meal", view: "spot", rest: "spot", onsen: "spot", quiet: "spot" };
 
-/** 希望に当たる場所の種類。景色+カフェなら sweets と spot */
-export function wantedKinds(preferences) {
+/** 希望に当たるジャンル。景色+温泉なら ["view", "onsen"]・カフェ+景色なら ["sweets", "view"] */
+export function wantedGenres(preferences) {
   const genre = genreForPreferences(preferences);
-  return genre ? [...new Set(genre.split("+").map((one) => GENRE_KIND[one]))] : [];
+  return genre ? genre.split("+") : [];
 }
 
 /**
- * 希望の種類の中から選ぶ。まだ1件も無い種類を先に埋め、埋まったら希望の種類全体から選ぶ。
- * 希望の種類が上限で尽きたら、他の種類でも埋める(カフェだけ選んだとき経由地が1件にならないように)。
- * こうしないと AI が景色+カフェでカフェ→「カフェ」という名前の食事の店と選び、景色が最後の1件に追いやられる
+ * 候補がそのジャンルに当たるか。検索語から付けたジャンルがあればそれで決める(温泉も展望台も spot なので種類では分けられない)。
+ * 無ければ(ジャンルを付ける前のキャッシュ)場所の種類で見る
  */
-export function narrowToWantedKinds(candidates, selected, kinds) {
-  if (kinds.length === 0) return candidates;
-  const missing = kinds.filter((kind) => !selected.some((item) => item.kind === kind));
-  for (const group of [missing, kinds]) {
-    const narrowed = candidates.filter((item) => group.includes(item.kind));
+function inGenre(candidate, genre) {
+  return candidate.genre ? candidate.genre === genre : candidate.kind === GENRE_KIND[genre];
+}
+
+/**
+ * 希望のジャンルの中から選ぶ。まだ1件も無いジャンルを先に埋め、埋まったら希望のジャンル全体から選ぶ。
+ * 希望のジャンルが上限で尽きたら、他の候補でも埋める(カフェだけ選んだとき経由地が1件にならないように)。
+ * こうしないと AI が景色+カフェでカフェ→「カフェ」という名前の食事の店と選んだり、
+ * 景色+温泉で展望台だけ選んだりして、選んだ希望の片方が出ない
+ */
+export function narrowToWantedGenres(candidates, selected, genres) {
+  if (genres.length === 0) return candidates;
+  const missing = genres.filter((genre) => !selected.some((item) => inGenre(item, genre)));
+  for (const group of [missing, genres]) {
+    const narrowed = candidates.filter((item) => group.some((genre) => inGenre(item, genre)));
     if (narrowed.length > 0) return narrowed;
   }
   return candidates;
 }
 
-async function pickWaypoints(pool, count, text, pick, limits, kinds = []) {
+async function pickWaypoints(pool, count, text, pick, limits, genres = []) {
   const selected = [];
   const reasons = [];
   let remaining = pool;
@@ -403,7 +414,7 @@ async function pickWaypoints(pool, count, text, pick, limits, kinds = []) {
     // 上限に達した種類(2件目の食事など)は候補から外す
     remaining = remaining.filter((item) => fitsKindLimits(selected, item, limits));
     if (remaining.length === 0) break;
-    const choice = await safePick(narrowToWantedKinds(remaining, selected, kinds), text, pick);
+    const choice = await safePick(narrowToWantedGenres(remaining, selected, genres), text, pick);
     const candidate = choice.candidate ?? remaining[0];
     selected.push(candidate);
     if (choice.reason) reasons.push(choice.reason);
