@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
   title: { color: '#1D232C', fontSize: 24, fontWeight: '800', lineHeight: 32, textAlign: 'center' },
   subtitle: { color: '#5F6F82', fontSize: 14, lineHeight: 21, textAlign: 'center' },
   card: { padding: 18, gap: 15, borderWidth: 1, borderColor: '#E2EEFC', borderRadius: 20, backgroundColor: '#FFFFFF', shadowColor: '#44719B', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.07, shadowRadius: 14, elevation: 2 },
-  mainAction: { flex: 1, justifyContent: 'center', gap: 12 },
+  mainAction: { flex: 1, justifyContent: 'center', gap: 12, transform: [{ translateY: -36 }] },
   openCard: { padding: 18 },
   urlCard: { padding: 14, gap: 9 },
   primaryButton: { minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 11, paddingHorizontal: 18, borderRadius: 14, backgroundColor: '#0783F2' },
