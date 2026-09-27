@@ -5,6 +5,8 @@ import {
   buildGoogleMapsUrl,
   candidatePool,
   editRoutePlan,
+  fitsKindLimits,
+  kindLimits,
   generateRoutePlan,
   maximumGeneratedWaypointCount,
   RouteServiceError,
@@ -581,4 +583,32 @@ test("editRoutePlan falls back to another eatery but never to a spot", async () 
     () => replaceFirst(onlySpots, () => ({ placeId: "meal-1", kind: "meal" })),
     (error) => error instanceof RouteServiceError && error.code === "NO_CANDIDATES",
   );
+});
+
+test("generateRoutePlan puts at most one meal and one cafe on a short route", async () => {
+  // 近場で時間に余裕があると、寄り道の短い飲食店ばかりが並んでいた
+  const eateries = [
+    ...["m1", "m2", "m3"].map((id, i) => ({ id, name: `食堂${i}`, category: "レストラン", kind: "meal", rating: 4.9 - i * 0.01 })),
+    ...["s1", "s2"].map((id, i) => ({ id, name: `喫茶${i}`, category: "カフェ", kind: "sweets", rating: 4.8 - i * 0.01 })),
+    ...["p1", "p2"].map((id, i) => ({ id, name: `公園${i}`, category: "公園", kind: "spot", rating: 4.0 - i * 0.01 })),
+  ].map((c, i) => ({ ...c, lat: 34.7, lng: 135.5 + i * 0.001, reviewCount: 100, detourMinutes: 3, routeRatio: 0.2 + i * 0.1, offRouteKm: 0.3 }));
+  const result = await generateRoutePlan(
+    { ...generateInput, preferences: [], freeText: "", timeConstraint: { type: "extra_time", minutes: 30 } },
+    dependencies({
+      search: async () => ({ baseMinutes: 8, distanceKm: 3, candidates: eateries }),
+      compute: async (_o, _d, waypoints) => ({ durationMinutes: 8 + waypoints.length * 3, distanceMeters: 3000 }),
+    }),
+  );
+  const kinds = result.waypoints.map((waypoint) => waypoint.kind);
+  assert.equal(kinds.filter((kind) => kind === "meal").length, 1);
+  assert.equal(kinds.filter((kind) => kind === "sweets").length, 1);
+  assert.ok(kinds.includes("spot"));
+});
+
+test("kindLimits allows a second meal only on long routes", () => {
+  assert.deepEqual(kindLimits(60), { meal: 1, sweets: 1 });
+  assert.equal(kindLimits(180).meal, 2);
+  assert.equal(fitsKindLimits([{ kind: "meal" }], { kind: "meal" }, kindLimits(60)), false);
+  assert.equal(fitsKindLimits([{ kind: "meal" }], { kind: "spot" }, kindLimits(60)), true);
+  assert.equal(fitsKindLimits([{ kind: "meal" }], { kind: null }, kindLimits(60)), true);
 });
