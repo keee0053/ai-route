@@ -164,8 +164,8 @@ test("automaticWaypointCount grows from two to five with route length", () => {
 
 test("maximumGeneratedWaypointCount follows the requested extra-time bands", () => {
   assert.equal(maximumGeneratedWaypointCount(60, { type: "extra_time", minutes: 15 }), 3);
-  assert.equal(maximumGeneratedWaypointCount(60, { type: "extra_time", minutes: 16 }), 5);
-  assert.equal(maximumGeneratedWaypointCount(60, { type: "extra_time", minutes: 30 }), 5);
+  assert.equal(maximumGeneratedWaypointCount(60, { type: "extra_time", minutes: 16 }), 3);
+  assert.equal(maximumGeneratedWaypointCount(60, { type: "extra_time", minutes: 30 }), 3);
   assert.equal(maximumGeneratedWaypointCount(60, { type: "extra_time", minutes: 31 }), 7);
   assert.equal(maximumGeneratedWaypointCount(60, { type: "extra_time", minutes: 60 }), 7);
   assert.equal(maximumGeneratedWaypointCount(60, { type: "extra_time", minutes: 61 }), 9);

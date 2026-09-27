@@ -29,7 +29,8 @@ const MODE_PROFILES = {
   driving: {
     maxOffRouteKm: 6,
     initialWaypoints: (minutes) => minutes < 30 ? 2 : minutes < 90 ? 3 : minutes < 180 ? 4 : 5,
-    maximumWaypoints: (extraMinutes) => extraMinutes <= 15 ? 3 : extraMinutes <= 30 ? 5 : extraMinutes <= 60 ? 7 : 9,
+    // +30分で5件は近場だと詰め込みすぎ(9/27)。+30分までは3件
+    maximumWaypoints: (extraMinutes) => extraMinutes <= 30 ? 3 : extraMinutes <= 60 ? 7 : 9,
   },
   bicycling: {
     maxOffRouteKm: 2,
