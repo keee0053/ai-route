@@ -1,6 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { router } from 'expo-router'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { PrimaryButton } from '@/components/PrimaryButton'
 import { GoogleMapsEntry } from '@/components/GoogleMapsEntry'
@@ -14,7 +14,9 @@ type ConnectionState = 'checking' | 'online' | 'offline'
 
 export default function SharedRouteScreen() {
   const [connection, setConnection] = useState<ConnectionState>('checking')
+  const [keyboardHeight, setKeyboardHeight] = useState(0)
   const initialUrlHandledRef = useRef(false)
+  const scrollRef = useRef<ScrollView>(null)
   const { googleMapsUrl, preview, previewLoading, error, receiveSharedUrl, clearError } = useRoute()
 
   const checkConnection = useCallback(() => {
@@ -44,6 +46,19 @@ export default function SharedRouteScreen() {
     if (!preview && !previewLoading && !error) void receiveSharedUrl(googleMapsUrl)
   }, [error, googleMapsUrl, preview, previewLoading, receiveSharedUrl])
 
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (event) => {
+      if (preview) return
+      setKeyboardHeight(event.endCoordinates.height)
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50)
+    })
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0))
+    return () => {
+      show.remove()
+      hide.remove()
+    }
+  }, [preview])
+
 
   const originName = preview?.origin.name ?? 'Google Mapsから共有してください'
   const destinationName = preview?.destination.name ?? (googleMapsUrl ? '目的地を読み込みます' : 'Googleマップで経路を出し「共有」からこのアプリを選ぶ')
@@ -51,8 +66,9 @@ export default function SharedRouteScreen() {
   const distance = preview ? `${(preview.normalRoute.distanceMeters / 1000).toFixed(1)} km` : '—'
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={[styles.safeArea, !preview && { paddingBottom: keyboardHeight }]} edges={['top']}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[styles.content, { flexGrow: 1, justifyContent: 'space-between' }]}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
