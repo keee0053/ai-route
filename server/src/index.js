@@ -258,7 +258,12 @@ async function getSearchData(origin, destination, genre, travelMode, env, ctx) {
   );
   const cache = caches.default;
   const hit = await cache.match(cacheKey);
-  if (hit) return hit.json();
+  if (hit) {
+    const cachedData = await hit.json();
+    // 希望が2つ以上のとき、検索語(query)が付く前のキャッシュでは温泉と展望台を区別できないので作り直す
+    const multiGenre = (genre ?? "").includes("+");
+    if (!multiGenre || cachedData.candidates?.every((candidate) => candidate.query)) return cachedData;
+  }
 
   const route = await computeRoute(env.GOOGLE_MAPS_SERVER_KEY, origin, destination, { travelMode: googleMode });
   const found = await searchAlongRoute(
