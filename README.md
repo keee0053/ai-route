@@ -9,6 +9,9 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/keee0053/ai-route/actions/workflows/ci.yml">
+    <img alt="CI" src="https://github.com/keee0053/ai-route/actions/workflows/ci.yml/badge.svg" />
+  </a>
   <img alt="Expo" src="https://img.shields.io/badge/Expo-57-000020?logo=expo" />
   <img alt="React Native" src="https://img.shields.io/badge/React%20Native-0.86-61DAFB?logo=react" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white" />
